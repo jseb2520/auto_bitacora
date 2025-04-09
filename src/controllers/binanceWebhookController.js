@@ -1,6 +1,6 @@
 /**
  * @fileoverview Controller for handling Binance webhook requests
- * @module controllers/webhookController
+ * @module controllers/binanceWebhookController
  */
 
 const crypto = require('crypto');
@@ -39,7 +39,7 @@ const handleWebhook = async (req, res) => {
   try {
     // For security, validate the request signature
     if (!_validateSignature(req)) {
-      console.warn('Invalid webhook signature');
+      console.warn('Invalid Binance webhook signature');
       return res.status(401).json({ error: 'Invalid signature' });
     }
     
@@ -48,6 +48,9 @@ const handleWebhook = async (req, res) => {
     if (!transactionData || !transactionData.orderId) {
       return res.status(400).json({ error: 'Invalid transaction data' });
     }
+    
+    // Add platform information
+    transactionData.platform = 'BINANCE';
     
     // Process the transaction
     const result = await transactionService.processWebhookTransaction(transactionData);
@@ -64,10 +67,11 @@ const handleWebhook = async (req, res) => {
     return res.status(200).json({ 
       success: true, 
       saved: true,
-      orderId: result.orderId 
+      orderId: result.orderId,
+      platform: result.platform
     });
   } catch (error) {
-    console.error('Webhook processing error:', error);
+    console.error('Binance webhook processing error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 };

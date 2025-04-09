@@ -5,6 +5,8 @@
 
 const Transaction = require('../models/transaction');
 const binanceService = require('./binanceService');
+const revolutService = require('./revolutService');
+const krakenService = require('./krakenService');
 const googleSheetsService = require('./googleSheetsService');
 
 /**
@@ -12,23 +14,33 @@ const googleSheetsService = require('./googleSheetsService');
  */
 class TransactionService {
   /**
-   * Fetches today's transactions from Binance, stores them in MongoDB, and syncs to Google Sheets
+   * Fetches today's transactions from all platforms, stores them in MongoDB, and syncs to Google Sheets
    * @returns {Promise<Array>} Array of saved and synced transactions
    */
   async fetchAndStoreTransactions() {
     try {
-      // Fetch transactions from Binance
-      const transactions = await binanceService.fetchTodayTransactions();
+      // Fetch transactions from all platforms
+      const [binanceTransactions, revolutTransactions, krakenTransactions] = await Promise.allSettled([
+        this.fetchBinanceTransactions(),
+        this.fetchRevolutTransactions(),
+        this.fetchKrakenTransactions()
+      ]);
       
-      if (!transactions || transactions.length === 0) {
-        console.log('No transactions found for today');
+      const allTransactions = [
+        ...(binanceTransactions.status === 'fulfilled' ? binanceTransactions.value : []),
+        ...(revolutTransactions.status === 'fulfilled' ? revolutTransactions.value : []),
+        ...(krakenTransactions.status === 'fulfilled' ? krakenTransactions.value : [])
+      ];
+      
+      if (allTransactions.length === 0) {
+        console.log('No transactions found for today from any platform');
         return [];
       }
       
-      console.log(`Processing ${transactions.length} transactions`);
+      console.log(`Processing ${allTransactions.length} transactions from all platforms`);
       
       // Store transactions in MongoDB
-      const savedTransactions = await this.saveTransactionsToDatabase(transactions);
+      const savedTransactions = await this.saveTransactionsToDatabase(allTransactions);
       
       // Sync unsynchronized transactions to Google Sheets
       await this.syncTransactionsToGoogleSheets();
@@ -41,8 +53,65 @@ class TransactionService {
   }
 
   /**
-   * Saves Binance transactions to MongoDB
-   * @param {Array} transactions - Array of transaction objects from Binance
+   * Fetches today's transactions from Binance
+   * @returns {Promise<Array>} Array of Binance transactions
+   */
+  async fetchBinanceTransactions() {
+    try {
+      const transactions = await binanceService.fetchTodayTransactions();
+      
+      // Add platform identifier to each transaction
+      return transactions.map(transaction => ({
+        ...transaction,
+        platform: 'BINANCE'
+      }));
+    } catch (error) {
+      console.error('Failed to fetch Binance transactions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches today's transactions from Revolut
+   * @returns {Promise<Array>} Array of Revolut transactions
+   */
+  async fetchRevolutTransactions() {
+    try {
+      const transactions = await revolutService.fetchTodayTransactions();
+      
+      // Add platform identifier to each transaction
+      return transactions.map(transaction => ({
+        ...transaction,
+        platform: 'REVOLUT'
+      }));
+    } catch (error) {
+      console.error('Failed to fetch Revolut transactions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches today's transactions from Kraken
+   * @returns {Promise<Array>} Array of Kraken transactions
+   */
+  async fetchKrakenTransactions() {
+    try {
+      const transactions = await krakenService.fetchTodayTransactions();
+      
+      // Add platform identifier to each transaction
+      return transactions.map(transaction => ({
+        ...transaction,
+        platform: 'KRAKEN'
+      }));
+    } catch (error) {
+      console.error('Failed to fetch Kraken transactions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Saves transactions to MongoDB
+   * @param {Array} transactions - Array of transaction objects from various platforms
    * @returns {Promise<Array>} Array of saved transaction documents
    * @private
    */
@@ -63,10 +132,14 @@ class TransactionService {
       const operations = completedTransactions.map(transaction => {
         return {
           updateOne: {
-            filter: { orderId: transaction.orderId },
+            filter: { 
+              orderId: transaction.orderId,
+              platform: transaction.platform
+            },
             update: {
               $set: {
                 orderId: transaction.orderId,
+                platform: transaction.platform,
                 symbol: transaction.symbol,
                 side: transaction.side,
                 type: transaction.type,
@@ -92,7 +165,10 @@ class TransactionService {
       
       // Retrieve the saved transactions to return
       const savedTransactions = await Transaction.find({
-        orderId: { $in: completedTransactions.map(t => t.orderId) },
+        $or: completedTransactions.map(t => ({ 
+          orderId: t.orderId, 
+          platform: t.platform 
+        }))
       });
       
       return savedTransactions;
@@ -150,9 +226,16 @@ class TransactionService {
         return null;
       }
       
+      // Ensure the platform is specified
+      if (!transactionData.platform) {
+        console.error('Platform not specified for webhook transaction');
+        throw new Error('Platform not specified');
+      }
+      
       // Save transaction to database
       const transaction = new Transaction({
         orderId: transactionData.orderId,
+        platform: transactionData.platform,
         symbol: transactionData.symbol,
         side: transactionData.side,
         type: transactionData.type,
@@ -167,7 +250,7 @@ class TransactionService {
       });
       
       await transaction.save();
-      console.log(`Completed transaction ${transaction.orderId} saved from webhook`);
+      console.log(`Completed transaction ${transaction.orderId} from ${transaction.platform} saved from webhook`);
       
       // Sync to Google Sheets
       await googleSheetsService.writeTransactions([transaction]);
@@ -176,7 +259,7 @@ class TransactionService {
       transaction.isSynced = true;
       await transaction.save();
       
-      console.log(`Transaction ${transaction.orderId} synced to Google Sheets`);
+      console.log(`Transaction ${transaction.orderId} from ${transaction.platform} synced to Google Sheets`);
       
       return transaction;
     } catch (error) {

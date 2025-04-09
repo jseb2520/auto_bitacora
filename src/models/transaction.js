@@ -1,5 +1,5 @@
 /**
- * @fileoverview Transaction model for storing Binance transactions
+ * @fileoverview Transaction model for storing crypto exchange transactions
  * @module models/transaction
  */
 
@@ -8,7 +8,8 @@ const mongoose = require('mongoose');
 /**
  * Transaction Schema
  * @typedef {Object} TransactionSchema
- * @property {string} orderId - Binance order ID
+ * @property {string} orderId - Exchange order ID
+ * @property {string} platform - Trading platform (BINANCE, REVOLUT, KRAKEN)
  * @property {string} symbol - Trading pair symbol (e.g., BTCUSDT)
  * @property {string} side - Order side (BUY or SELL)
  * @property {string} type - Order type (LIMIT, MARKET, etc.)
@@ -27,7 +28,12 @@ const transactionSchema = new mongoose.Schema(
     orderId: {
       type: String,
       required: true,
-      unique: true,
+      index: true,
+    },
+    platform: {
+      type: String,
+      enum: ['BINANCE', 'REVOLUT', 'KRAKEN'],
+      required: true,
       index: true,
     },
     symbol: {
@@ -82,6 +88,9 @@ const transactionSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Create a compound index for orderId and platform to ensure uniqueness
+transactionSchema.index({ orderId: 1, platform: 1 }, { unique: true });
 
 /**
  * Transaction model

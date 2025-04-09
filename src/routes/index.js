@@ -4,7 +4,9 @@
  */
 
 const express = require('express');
-const webhookController = require('../controllers/webhookController');
+const binanceWebhookController = require('../controllers/webhookController');
+const revolutWebhookController = require('../controllers/revolutWebhookController');
+const krakenWebhookController = require('../controllers/krakenWebhookController');
 
 const router = express.Router();
 
@@ -22,6 +24,20 @@ router.get('/health', (req, res) => {
  * @description Webhook endpoint for Binance transaction updates
  * @access Private (secured by signature validation)
  */
-router.post('/webhook/binance', webhookController.handleWebhook);
+router.post('/webhook/binance', binanceWebhookController.handleWebhook);
+
+/**
+ * @route POST /api/webhook/revolut
+ * @description Webhook endpoint for Revolut transaction updates
+ * @access Private (secured by signature validation)
+ */
+router.post('/webhook/revolut', revolutWebhookController.handleWebhook);
+
+/**
+ * @route POST /api/webhook/kraken
+ * @description Webhook endpoint for Kraken transaction updates
+ * @access Private (secured by signature validation)
+ */
+router.post('/webhook/kraken', krakenWebhookController.handleWebhook);
 
 module.exports = router; 

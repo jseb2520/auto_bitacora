@@ -59,6 +59,7 @@ class GoogleSheetsService {
       // Transform transactions to sheet rows format
       const rows = transactions.map(transaction => [
         transaction.orderId,
+        transaction.platform,
         transaction.symbol,
         transaction.side,
         transaction.type,

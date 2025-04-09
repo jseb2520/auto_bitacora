@@ -18,6 +18,13 @@ dotenv.config();
  * @property {Object} binance - Binance API configuration
  * @property {string} binance.apiKey - Binance API key
  * @property {string} binance.apiSecret - Binance API secret
+ * @property {Object} revolut - Revolut API configuration
+ * @property {string} revolut.apiKey - Revolut API key
+ * @property {string} revolut.apiSecret - Revolut API secret
+ * @property {string} revolut.clientId - Revolut client ID
+ * @property {Object} kraken - Kraken API configuration
+ * @property {string} kraken.apiKey - Kraken API key
+ * @property {string} kraken.apiSecret - Kraken API secret
  * @property {Object} googleSheets - Google Sheets configuration
  * @property {string} googleSheets.credentialsPath - Path to Google credentials file
  * @property {string} googleSheets.sheetId - ID of the Google Sheet
@@ -38,6 +45,15 @@ const config = {
   binance: {
     apiKey: process.env.BINANCE_API_KEY,
     apiSecret: process.env.BINANCE_API_SECRET,
+  },
+  revolut: {
+    apiKey: process.env.REVOLUT_API_KEY,
+    apiSecret: process.env.REVOLUT_API_SECRET,
+    clientId: process.env.REVOLUT_CLIENT_ID,
+  },
+  kraken: {
+    apiKey: process.env.KRAKEN_API_KEY,
+    apiSecret: process.env.KRAKEN_API_SECRET,
   },
   googleSheets: {
     credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS || './credentials.json',
