@@ -6,6 +6,10 @@
 const { google } = require('googleapis');
 const fs = require('fs');
 const config = require('../config');
+const { logger, createModuleLogger } = require('../utils/logger');
+
+// Create a module-specific logger
+const moduleLogger = createModuleLogger('googleSheetsService');
 
 /**
  * Google Sheets API service for writing transaction data
@@ -24,6 +28,9 @@ class GoogleSheetsService {
    */
   async initialize() {
     try {
+      moduleLogger.info('Initializing Google Sheets service');
+      moduleLogger.debug('Using credentials from path:', this.credentialsPath);
+      
       // Load credentials
       const credentials = JSON.parse(fs.readFileSync(this.credentialsPath, 'utf8'));
       
@@ -38,9 +45,13 @@ class GoogleSheetsService {
       // Create Google Sheets API client
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
       
-      console.log('Google Sheets service initialized successfully');
+      moduleLogger.info('Google Sheets service initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize Google Sheets service:', error);
+      moduleLogger.error('Failed to initialize Google Sheets service', { 
+        error: error.message,
+        stack: error.stack,
+        path: this.credentialsPath
+      });
       throw error;
     }
   }
@@ -52,24 +63,67 @@ class GoogleSheetsService {
    */
   async writeTransactions(transactions) {
     if (!this.sheets) {
+      moduleLogger.debug('Google Sheets client not initialized, initializing now');
       await this.initialize();
     }
     
     try {
+      moduleLogger.info(`Writing ${transactions.length} transactions to Google Sheets`);
+      
       // Transform transactions to sheet rows format
-      const rows = transactions.map(transaction => [
-        transaction.orderId,
-        transaction.platform,
-        transaction.symbol,
-        transaction.side,
-        transaction.type,
-        transaction.price,
-        transaction.quantity,
-        transaction.quoteQuantity,
-        transaction.status,
-        new Date(transaction.time).toISOString(),
-        new Date(transaction.updateTime).toISOString()
-      ]);
+      const rows = transactions.map(transaction => {
+        const customerConfig = require('../config/customers');
+        let customerName = 'Unknown';
+        
+        // Try to identify customer
+        if (transaction.customerId) {
+          const customer = customerConfig.getCustomerById(transaction.customerId);
+          if (customer) {
+            customerName = customer.name;
+          }
+        } else if (transaction.walletAddress) {
+          const customer = customerConfig.getCustomerByWalletAddress(transaction.walletAddress);
+          if (customer) {
+            customerName = customer.name;
+          }
+        }
+        
+        // Get payment details if available
+        let paymentInfo = '';
+        if (transaction.paymentDetails) {
+          const details = transaction.paymentDetails;
+          paymentInfo = [
+            details.method,
+            details.accountId,
+            details.email,
+            details.phone,
+            details.reference
+          ].filter(Boolean).join(', ');
+        }
+        
+        return [
+          transaction.orderId,
+          transaction.platform,
+          transaction.transactionType || 'OTHER',
+          customerName,
+          transaction.symbol,
+          transaction.side,
+          transaction.type,
+          transaction.price,
+          transaction.quantity,
+          transaction.quoteQuantity,
+          transaction.status,
+          new Date(transaction.time).toISOString(),
+          new Date(transaction.updateTime).toISOString(),
+          transaction.walletAddress || '',
+          paymentInfo
+        ];
+      });
+      
+      moduleLogger.debug('Transactions transformed to sheets format', {
+        rowCount: rows.length,
+        sampleRow: rows.length > 0 ? rows[0] : 'No rows'
+      });
       
       // Prepare the values for insertion
       const resource = {
@@ -77,6 +131,8 @@ class GoogleSheetsService {
       };
       
       // Append to the sheet
+      moduleLogger.debug(`Appending rows to sheet: ${this.sheetId}, range: Transactions`);
+      
       const response = await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.sheetId,
         range: 'Transactions', // Assumes sheet named "Transactions"
@@ -84,11 +140,21 @@ class GoogleSheetsService {
         resource,
       });
       
-      console.log(`${response.data.updates.updatedRows} rows appended to Google Sheet`);
+      moduleLogger.info('Successfully wrote transactions to Google Sheets', {
+        updatedRows: response.data.updates.updatedRows,
+        updatedColumns: response.data.updates.updatedColumns,
+        updatedCells: response.data.updates.updatedCells,
+        sheetId: this.sheetId
+      });
       
       return response.data;
     } catch (error) {
-      console.error('Failed to write transactions to Google Sheets:', error);
+      moduleLogger.error('Failed to write transactions to Google Sheets', { 
+        error: error.message,
+        stack: error.stack,
+        transactionCount: transactions.length,
+        sheetId: this.sheetId
+      });
       throw error;
     }
   }

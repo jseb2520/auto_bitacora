@@ -13,6 +13,7 @@ dotenv.config();
  * @property {Object} server - Server configuration
  * @property {number} server.port - Port the server will listen on
  * @property {string} server.env - Environment (development, production, etc.)
+ * @property {string} server.apiKey - API key for authentication
  * @property {Object} mongodb - MongoDB configuration
  * @property {string} mongodb.uri - MongoDB connection URI
  * @property {Object} binance - Binance API configuration
@@ -25,6 +26,8 @@ dotenv.config();
  * @property {Object} kraken - Kraken API configuration
  * @property {string} kraken.apiKey - Kraken API key
  * @property {string} kraken.apiSecret - Kraken API secret
+ * @property {Object} telegram - Telegram bot configuration
+ * @property {string} telegram.botToken - Telegram bot token
  * @property {Object} googleSheets - Google Sheets configuration
  * @property {string} googleSheets.credentialsPath - Path to Google credentials file
  * @property {string} googleSheets.sheetId - ID of the Google Sheet
@@ -36,8 +39,9 @@ dotenv.config();
  */
 const config = {
   server: {
-    port: process.env.PORT || 3000,
+    port: process.env.PORT || 5000,
     env: process.env.NODE_ENV || 'development',
+    apiKey: process.env.API_KEY || 'development-api-key',
   },
   mongodb: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/auto_bitacora',
@@ -55,10 +59,22 @@ const config = {
     apiKey: process.env.KRAKEN_API_KEY,
     apiSecret: process.env.KRAKEN_API_SECRET,
   },
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN,
+  },
   googleSheets: {
     credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS || './credentials.json',
     sheetId: process.env.GOOGLE_SHEET_ID,
   },
 };
+
+// Debug logs for configuration loading
+console.log('Environment:', process.env.NODE_ENV || 'development');
+console.log('API Key loaded from environment:', process.env.API_KEY ? '[PRESENT]' : '[MISSING]');
+console.log('API Key in config:', config.server.apiKey ? '[CONFIGURED]' : '[MISSING]');
+console.log('Port:', config.server.port);
+console.log('MongoDB URI configured:', config.mongodb.uri ? '[PRESENT]' : '[MISSING]');
+console.log('Binance API Key configured:', config.binance.apiKey ? '[PRESENT]' : '[MISSING]');
+console.log('Google Sheet ID:', config.googleSheets.sheetId || '[MISSING]');
 
 module.exports = config; 

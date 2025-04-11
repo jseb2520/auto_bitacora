@@ -8,6 +8,10 @@ const binanceService = require('./binanceService');
 const revolutService = require('./revolutService');
 const krakenService = require('./krakenService');
 const googleSheetsService = require('./googleSheetsService');
+const { logger, createModuleLogger } = require('../utils/logger');
+
+// Create a module-specific logger
+const moduleLogger = createModuleLogger('transactionService');
 
 /**
  * Transaction service to manage fetching, storing, and syncing transactions
@@ -19,25 +23,27 @@ class TransactionService {
    */
   async fetchAndStoreTransactions() {
     try {
-      // Fetch transactions from all platforms
-      const [binanceTransactions, revolutTransactions, krakenTransactions] = await Promise.allSettled([
+      // Fetch transactions from Binance only (commenting out other platforms for now)
+      const [binanceTransactions] = await Promise.allSettled([
         this.fetchBinanceTransactions(),
-        this.fetchRevolutTransactions(),
-        this.fetchKrakenTransactions()
+        // Commenting out other platforms until they're properly configured
+        // this.fetchRevolutTransactions(),
+        // this.fetchKrakenTransactions()
       ]);
       
       const allTransactions = [
         ...(binanceTransactions.status === 'fulfilled' ? binanceTransactions.value : []),
-        ...(revolutTransactions.status === 'fulfilled' ? revolutTransactions.value : []),
-        ...(krakenTransactions.status === 'fulfilled' ? krakenTransactions.value : [])
+        // Commented out other platforms until they're properly configured
+        // ...(revolutTransactions.status === 'fulfilled' ? revolutTransactions.value : []),
+        // ...(krakenTransactions.status === 'fulfilled' ? krakenTransactions.value : [])
       ];
       
       if (allTransactions.length === 0) {
-        console.log('No transactions found for today from any platform');
+        moduleLogger.info('No transactions found for today from any platform');
         return [];
       }
       
-      console.log(`Processing ${allTransactions.length} transactions from all platforms`);
+      moduleLogger.info(`Processing ${allTransactions.length} transactions from all platforms`);
       
       // Store transactions in MongoDB
       const savedTransactions = await this.saveTransactionsToDatabase(allTransactions);
@@ -47,7 +53,7 @@ class TransactionService {
       
       return savedTransactions;
     } catch (error) {
-      console.error('Failed to fetch and store transactions:', error);
+      moduleLogger.error('Failed to fetch and store transactions:', error);
       throw error;
     }
   }
@@ -58,15 +64,111 @@ class TransactionService {
    */
   async fetchBinanceTransactions() {
     try {
-      const transactions = await binanceService.fetchTodayTransactions();
+      moduleLogger.info('Starting Binance transaction fetch process - detailed debug enabled');
       
-      // Add platform identifier to each transaction
-      return transactions.map(transaction => ({
+      // Ensure the Binance service has valid credentials
+      moduleLogger.debug('Binance API credentials check', {
+        hasApiKey: !!binanceService.apiKey,
+        hasApiSecret: !!binanceService.apiSecret,
+        baseUrl: binanceService.baseUrl
+      });
+      
+      moduleLogger.info('Fetching data from Binance API with three separate calls...');
+      
+      // Fetch all types of transactions from Binance
+      const [standardTransactions, deposits, p2pTrades] = await Promise.allSettled([
+        binanceService.fetchTodayTransactions().catch(err => {
+          moduleLogger.error('Error fetching standard Binance transactions:', {
+            error: err.message,
+            stack: err.stack,
+            code: err.code,
+            statusCode: err.response?.status
+          });
+          return [];
+        }),
+        binanceService.fetchTodayDeposits().catch(err => {
+          moduleLogger.error('Error fetching Binance deposits:', {
+            error: err.message,
+            stack: err.stack,
+            code: err.code,
+            statusCode: err.response?.status
+          });
+          return [];
+        }),
+        binanceService.fetchTodayP2PTrades().catch(err => {
+          moduleLogger.error('Error fetching Binance P2P trades:', {
+            error: err.message,
+            stack: err.stack,
+            code: err.code,
+            statusCode: err.response?.status
+          });
+          return [];
+        })
+      ]);
+      
+      moduleLogger.debug('Binance API call results:', {
+        standardTransactions: {
+          status: standardTransactions.status,
+          dataCount: standardTransactions.status === 'fulfilled' ? standardTransactions.value.length : 0,
+          error: standardTransactions.status === 'rejected' ? standardTransactions.reason?.message : null
+        },
+        deposits: {
+          status: deposits.status,
+          dataCount: deposits.status === 'fulfilled' ? deposits.value.length : 0,
+          error: deposits.status === 'rejected' ? deposits.reason?.message : null
+        },
+        p2pTrades: {
+          status: p2pTrades.status,
+          dataCount: p2pTrades.status === 'fulfilled' ? p2pTrades.value.length : 0,
+          error: p2pTrades.status === 'rejected' ? p2pTrades.reason?.message : null
+        }
+      });
+      
+      // Combine all transaction types
+      const allBinanceTransactions = [
+        ...(standardTransactions.status === 'fulfilled' ? standardTransactions.value : []),
+        ...(deposits.status === 'fulfilled' ? deposits.value : []),
+        ...(p2pTrades.status === 'fulfilled' ? p2pTrades.value : [])
+      ];
+      
+      moduleLogger.info(`Fetched ${allBinanceTransactions.length} total Binance transactions`);
+      
+      // More detailed logging of transaction breakdown
+      const standardCount = standardTransactions.status === 'fulfilled' ? standardTransactions.value.length : 0;
+      const depositsCount = deposits.status === 'fulfilled' ? deposits.value.length : 0;
+      const p2pCount = p2pTrades.status === 'fulfilled' ? p2pTrades.value.length : 0;
+      
+      moduleLogger.debug(`Transaction breakdown: ${standardCount} standard, ${depositsCount} deposits, ${p2pCount} P2P trades`);
+      
+      // Log examples of each transaction type for debugging
+      if (standardCount > 0) {
+        moduleLogger.debug('Sample standard transaction:', {
+          sample: standardTransactions.value[0]
+        });
+      }
+      
+      if (depositsCount > 0) {
+        moduleLogger.debug('Sample deposit transaction:', {
+          sample: deposits.value[0]
+        });
+      }
+      
+      if (p2pCount > 0) {
+        moduleLogger.debug('Sample P2P transaction:', {
+          sample: p2pTrades.value[0]
+        });
+      }
+      
+      // Ensure platform is set
+      return allBinanceTransactions.map(transaction => ({
         ...transaction,
         platform: 'BINANCE'
       }));
     } catch (error) {
-      console.error('Failed to fetch Binance transactions:', error);
+      moduleLogger.error('Failed to fetch Binance transactions:', {
+        error: error.message,
+        stack: error.stack
+      });
       return [];
     }
   }
@@ -85,7 +187,7 @@ class TransactionService {
         platform: 'REVOLUT'
       }));
     } catch (error) {
-      console.error('Failed to fetch Revolut transactions:', error);
+      moduleLogger.error('Failed to fetch Revolut transactions:', error);
       return [];
     }
   }
@@ -104,7 +206,7 @@ class TransactionService {
         platform: 'KRAKEN'
       }));
     } catch (error) {
-      console.error('Failed to fetch Kraken transactions:', error);
+      moduleLogger.error('Failed to fetch Kraken transactions:', error);
       return [];
     }
   }
@@ -117,41 +219,57 @@ class TransactionService {
    */
   async saveTransactionsToDatabase(transactions) {
     try {
-      // Filter out transactions that are not completed
+      // Include all transactions, not just the completed ones, but log them differently
       const completedTransactions = transactions.filter(
         transaction => transaction.status === "FILLED" || transaction.status === "COMPLETED"
       );
       
-      if (completedTransactions.length === 0) {
-        console.log('No completed transactions to save');
-        return [];
-      }
+      const pendingTransactions = transactions.filter(
+        transaction => transaction.status !== "FILLED" && transaction.status !== "COMPLETED"
+      );
       
-      console.log(`Processing ${completedTransactions.length} completed transactions out of ${transactions.length} total`);
+      moduleLogger.info(`Processing ${completedTransactions.length} completed and ${pendingTransactions.length} pending transactions out of ${transactions.length} total`);
       
-      const operations = completedTransactions.map(transaction => {
+      // Track transactions with and without customer IDs
+      const identifiedTransactions = transactions.filter(t => t.customerId);
+      const unidentifiedTransactions = transactions.filter(t => !t.customerId);
+      
+      moduleLogger.info(`Transaction breakdown: ${identifiedTransactions.length} with customer ID, ${unidentifiedTransactions.length} without customer ID`);
+      
+      const operations = transactions.map(transaction => {
+        // Ensure these fields exist to avoid schema validation issues
+        const transactionData = {
+          orderId: transaction.orderId || `unknown-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
+          platform: transaction.platform,
+          transactionType: transaction.transactionType || 'OTHER',
+          symbol: transaction.symbol,
+          side: transaction.side,
+          type: transaction.type,
+          price: parseFloat(transaction.price) || 1,
+          quantity: parseFloat(transaction.quantity || transaction.origQty) || 0,
+          quoteQuantity: parseFloat(transaction.quoteQuantity || transaction.cummulativeQuoteQty) || 0,
+          status: transaction.status,
+          time: new Date(transaction.time),
+          updateTime: new Date(transaction.updateTime || transaction.time),
+          isWorking: transaction.isWorking || false,
+          isSynced: false,
+          customerId: transaction.customerId || null,
+          walletAddress: transaction.walletAddress || null
+        };
+        
+        // Add payment details if they exist
+        if (transaction.paymentDetails) {
+          transactionData.paymentDetails = transaction.paymentDetails;
+        }
+        
         return {
           updateOne: {
             filter: { 
-              orderId: transaction.orderId,
-              platform: transaction.platform
+              orderId: transactionData.orderId,
+              platform: transactionData.platform
             },
             update: {
-              $set: {
-                orderId: transaction.orderId,
-                platform: transaction.platform,
-                symbol: transaction.symbol,
-                side: transaction.side,
-                type: transaction.type,
-                price: parseFloat(transaction.price),
-                quantity: parseFloat(transaction.origQty),
-                quoteQuantity: parseFloat(transaction.cummulativeQuoteQty),
-                status: transaction.status,
-                time: new Date(transaction.time),
-                updateTime: new Date(transaction.updateTime),
-                isWorking: transaction.isWorking,
-                isSynced: false,
-              },
+              $set: transactionData,
             },
             upsert: true,
           },
@@ -159,21 +277,22 @@ class TransactionService {
       });
       
       if (operations.length > 0) {
-        await Transaction.bulkWrite(operations);
-        console.log(`${operations.length} completed transactions saved to database`);
+        const result = await Transaction.bulkWrite(operations);
+        moduleLogger.info(`Transaction save result: ${result.upsertedCount} upserted, ${result.modifiedCount} modified`);
       }
       
       // Retrieve the saved transactions to return
       const savedTransactions = await Transaction.find({
-        $or: completedTransactions.map(t => ({ 
-          orderId: t.orderId, 
+        $or: transactions.map(t => ({ 
+          orderId: t.orderId || `unknown-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`, 
           platform: t.platform 
         }))
       });
       
+      moduleLogger.info(`${savedTransactions.length} transactions saved to database`);
       return savedTransactions;
     } catch (error) {
-      console.error('Failed to save transactions to database:', error);
+      moduleLogger.error('Failed to save transactions to database:', error);
       throw error;
     }
   }
@@ -188,11 +307,16 @@ class TransactionService {
       const unsyncedTransactions = await Transaction.find({ isSynced: false });
       
       if (unsyncedTransactions.length === 0) {
-        console.log('No unsynced transactions to sync to Google Sheets');
+        moduleLogger.info('No unsynced transactions to sync to Google Sheets');
         return [];
       }
       
-      console.log(`Found ${unsyncedTransactions.length} unsynced transactions`);
+      moduleLogger.info(`Found ${unsyncedTransactions.length} unsynced transactions to sync to Google Sheets`);
+      
+      // Log breakdown of transactions with/without customer IDs
+      const identifiedTransactions = unsyncedTransactions.filter(t => t.customerId);
+      const unidentifiedTransactions = unsyncedTransactions.filter(t => !t.customerId);
+      moduleLogger.debug(`Syncing breakdown: ${identifiedTransactions.length} with customer ID, ${unidentifiedTransactions.length} without customer ID`);
       
       // Write to Google Sheets
       await googleSheetsService.writeTransactions(unsyncedTransactions);
@@ -204,11 +328,11 @@ class TransactionService {
         { $set: { isSynced: true } }
       );
       
-      console.log(`${unsyncedTransactions.length} transactions synced to Google Sheets`);
+      moduleLogger.info(`${unsyncedTransactions.length} transactions synced to Google Sheets`);
       
       return unsyncedTransactions;
     } catch (error) {
-      console.error('Failed to sync transactions to Google Sheets:', error);
+      moduleLogger.error('Failed to sync transactions to Google Sheets:', error);
       throw error;
     }
   }
@@ -220,50 +344,59 @@ class TransactionService {
    */
   async processWebhookTransaction(transactionData) {
     try {
-      // Only save transactions with status "FILLED" or "COMPLETED"
+      // We'll save all transactions, regardless of status, but we'll log them differently
       if (transactionData.status !== "FILLED" && transactionData.status !== "COMPLETED") {
-        console.log(`Ignoring transaction ${transactionData.orderId} with status ${transactionData.status}`);
-        return null;
+        moduleLogger.info(`Processing non-completed transaction ${transactionData.orderId} with status ${transactionData.status}`);
+      } else {
+        moduleLogger.info(`Processing completed transaction ${transactionData.orderId}`);
       }
       
       // Ensure the platform is specified
       if (!transactionData.platform) {
-        console.error('Platform not specified for webhook transaction');
+        moduleLogger.error('Platform not specified for webhook transaction');
         throw new Error('Platform not specified');
       }
       
       // Save transaction to database
-      const transaction = new Transaction({
-        orderId: transactionData.orderId,
+      const transactionToSave = {
+        orderId: transactionData.orderId || `unknown-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
         platform: transactionData.platform,
+        transactionType: transactionData.transactionType || 'OTHER',
         symbol: transactionData.symbol,
         side: transactionData.side,
         type: transactionData.type,
-        price: parseFloat(transactionData.price),
-        quantity: parseFloat(transactionData.origQty),
-        quoteQuantity: parseFloat(transactionData.cummulativeQuoteQty),
+        price: parseFloat(transactionData.price) || 1,
+        quantity: parseFloat(transactionData.quantity || transactionData.origQty) || 0,
+        quoteQuantity: parseFloat(transactionData.quoteQuantity || transactionData.cummulativeQuoteQty) || 0,
         status: transactionData.status,
         time: new Date(transactionData.time),
-        updateTime: new Date(transactionData.updateTime),
-        isWorking: transactionData.isWorking,
+        updateTime: new Date(transactionData.updateTime || transactionData.time),
+        isWorking: transactionData.isWorking || false,
         isSynced: false,
-      });
+        customerId: transactionData.customerId || null,
+        walletAddress: transactionData.walletAddress || null
+      };
       
+      // Add payment details if they exist
+      if (transactionData.paymentDetails) {
+        transactionToSave.paymentDetails = transactionData.paymentDetails;
+      }
+      
+      const transaction = new Transaction(transactionToSave);
       await transaction.save();
-      console.log(`Completed transaction ${transaction.orderId} from ${transaction.platform} saved from webhook`);
       
       // Sync to Google Sheets
       await googleSheetsService.writeTransactions([transaction]);
       
-      // Update as synced
+      // Mark as synced
       transaction.isSynced = true;
       await transaction.save();
       
-      console.log(`Transaction ${transaction.orderId} from ${transaction.platform} synced to Google Sheets`);
+      moduleLogger.info(`Transaction ${transaction.orderId} from ${transaction.platform} saved and synced`);
       
       return transaction;
     } catch (error) {
-      console.error('Failed to process webhook transaction:', error);
+      moduleLogger.error(`Failed to process webhook transaction:`, { error: error.message, data: transactionData });
       throw error;
     }
   }

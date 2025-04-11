@@ -14,6 +14,9 @@ const connectDatabase = async () => {
   try {
     const connection = await mongoose.connect(config.mongodb.uri, {
       // Options for MongoDB connection
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s
+      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      dbName: 'auto_bitacora' // Specify database name from environment variable
     });
     
     console.log(`MongoDB connected: ${connection.connection.host}`);
