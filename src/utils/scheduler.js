@@ -23,8 +23,8 @@ class Scheduler {
    * Initializes all scheduled tasks
    */
   initTasks() {
-    // Schedule daily transaction fetch at midnight UTC
-    this.scheduleDailyTransactionFetch();
+    // Schedule periodic Gmail transaction fetch
+    this.scheduleGmailTransactionFetch();
     
     // Schedule daily summary generation
     this.scheduleDailySummaries();
@@ -33,8 +33,45 @@ class Scheduler {
   }
 
   /**
-   * Schedules the daily transaction fetch task
+   * Schedules the Gmail transaction fetch task to run periodically
    */
+  scheduleGmailTransactionFetch() {
+    // Run every 2 hours from 8am to 10pm
+    this.tasks.fetchTransactions = cron.schedule('0 */2 8-22 * * *', async () => {
+      moduleLogger.info(`[${new Date().toISOString()}] Running scheduled Gmail transaction fetch`);
+      
+      try {
+        const transactions = await transactionService.fetchAndStoreTransactions();
+        
+        // Log detailed information about fetched transactions
+        const completedTransactions = transactions.filter(
+          t => t.status === "FILLED" || t.status === "COMPLETED"
+        );
+        
+        const identifiedTransactions = transactions.filter(t => t.customerId);
+        
+        moduleLogger.info(`[${new Date().toISOString()}] Scheduled Gmail transaction fetch completed: 
+            Total transactions: ${transactions.length}
+            Completed transactions: ${completedTransactions.length}
+            With customer ID: ${identifiedTransactions.length}
+            Without customer ID: ${transactions.length - identifiedTransactions.length}
+        `);
+        
+        if (transactions.length === 0) {
+          moduleLogger.warn(`[${new Date().toISOString()}] No transactions were found during the scheduled Gmail fetch`);
+        }
+      } catch (error) {
+        moduleLogger.error(`[${new Date().toISOString()}] Scheduled Gmail transaction fetch failed:`, error);
+      }
+    });
+    
+    moduleLogger.info('Gmail transaction fetch scheduled for every 2 hours from 8am-10pm');
+  }
+  
+  /**
+   * Commented out original Binance API transaction fetch (kept for reference)
+   */
+  /*
   scheduleDailyTransactionFetch() {
     // Run at midnight UTC every day
     this.tasks.fetchTransactions = cron.schedule('0 0 * * *', async () => {
@@ -70,6 +107,7 @@ class Scheduler {
     
     moduleLogger.info('Daily transaction fetch scheduled for midnight UTC');
   }
+  */
   
   /**
    * Schedules the daily summary generation and sending task

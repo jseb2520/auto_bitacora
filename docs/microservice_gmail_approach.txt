@@ -1,0 +1,123 @@
+1. Enable Gmail API & Get Credentials
+You’ll need OAuth 2.0 credentials to access the Gmail API on behalf of your Google account.
+
+Steps:
+Go to Google Cloud Console.
+
+Create a project (or use an existing one).
+
+Enable APIs:
+
+Go to "APIs & Services" > "Library".
+
+Enable Gmail API.
+
+Create OAuth Credentials:
+
+Go to "APIs & Services" > "Credentials".
+
+Click “Create Credentials” > OAuth client ID.
+
+Choose Desktop App or Web App (based on how you will authorize it).
+
+Download the credentials.json file — you’ll need it in your Node.js service.
+
+2. Set Up Gmail API in Node.js
+You’ll use googleapis package for this.
+
+bash
+Copy
+Edit
+npm install googleapis
+Then, create an auth.js file to handle authentication:
+
+js
+Copy
+Edit
+const fs = require('fs');
+const { google } = require('googleapis');
+const readline = require('readline');
+
+const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+const TOKEN_PATH = 'token.json';
+
+function authorize(credentials, callback) {
+  const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
+  const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+
+  // Check for saved token
+  fs.readFile(TOKEN_PATH, (err, token) => {
+    if (err) return getNewToken(oAuth2Client, callback);
+    oAuth2Client.setCredentials(JSON.parse(token));
+    callback(oAuth2Client);
+  });
+}
+
+function getNewToken(oAuth2Client, callback) {
+  const authUrl = oAuth2Client.generateAuthUrl({ access_type: 'offline', scope: SCOPES });
+  console.log('Authorize this app by visiting:', authUrl);
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl.question('Enter the code from that page here: ', (code) => {
+    rl.close();
+    oAuth2Client.getToken(code, (err, token) => {
+      if (err) return console.error('Error retrieving token', err);
+      oAuth2Client.setCredentials(token);
+      fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));
+      callback(oAuth2Client);
+    });
+  });
+}
+
+module.exports = { authorize };
+3. Read Binance Transaction Emails
+Once authenticated, you can read emails using Gmail API:
+
+js
+Copy
+Edit
+const { google } = require('googleapis');
+const { authorize } = require('./auth');
+
+authorize(require('./credentials.json'), listBinanceEmails);
+
+function listBinanceEmails(auth) {
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  gmail.users.messages.list(
+    {
+      userId: 'me',
+      q: 'from:no-reply@binance.com subject:Transaction', // Filter to Binance emails
+      maxResults: 10,
+    },
+    async (err, res) => {
+      if (err) return console.log('The API returned an error:', err);
+      const messages = res.data.messages || [];
+
+      for (let message of messages) {
+        const msg = await gmail.users.messages.get({ userId: 'me', id: message.id });
+        const body = Buffer.from(msg.data.payload.parts?.[0]?.body.data || '', 'base64').toString();
+        console.log('Message:', body);
+        // Parse and send to Google Sheets from here
+      }
+    }
+  );
+}
+4. Parse & Log to Google Sheets
+After extracting data from email, send it to your Google Sheet. Since you have credentials for Sheets already, just plug it in here.
+
+5. Optional Automation Tips
+Use a scheduler like node-cron to run this periodically.
+
+Add caching or flags to avoid duplicate log entries.
+
+Consider storing the latest processed email ID to resume from there.
+
+Let me know if you want help with:
+
+Writing to Google Sheets from this script
+
+Email parsing logic for Binance formats
+
+Deploying this as a microservice or scheduled job (e.g., using Cloud Functions or a Docker container)
+

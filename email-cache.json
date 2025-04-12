@@ -1,0 +1,35 @@
+{
+  "processedEmails": {
+    "196269dea5a8cfd0": {
+      "processedAt": "2025-04-12T21:22:03.082Z",
+      "subject": "Fwd: [Binance]Payment Transaction Detail - 2025-04-11 14:25:02 (UTC)",
+      "date": "2025-04-11T20:49:53.000Z",
+      "transactionCount": 1,
+      "transactionIds": [
+        "binance-payment-1744381502000-5b3yu0lb"
+      ]
+    },
+    "1961cb2d5350988c": {
+      "processedAt": "2025-04-12T21:22:03.083Z",
+      "subject": "Create New API Key From 181.234.137.169 - 2025-04-09 22:36:40(UTC)",
+      "date": "2025-04-09T22:36:43.000Z",
+      "transactionCount": 0,
+      "transactionIds": []
+    },
+    "1961ba1d4eea4dfe": {
+      "processedAt": "2025-04-12T21:22:03.084Z",
+      "subject": "[Binance] Login Attempted from New IP address  181.234.137.169 - 2025-04-09 17:38:28(UTC)",
+      "date": "2025-04-09T17:38:31.000Z",
+      "transactionCount": 0,
+      "transactionIds": []
+    },
+    "195a0e2552c4ead6": {
+      "processedAt": "2025-04-12T21:22:03.084Z",
+      "subject": "[Binance] Login Attempted from New IP address  191.106.169.86 - 2025-03-16 21:35:38(UTC)",
+      "date": "2025-03-16T21:35:42.000Z",
+      "transactionCount": 0,
+      "transactionIds": []
+    }
+  },
+  "lastUpdated": "2025-04-12T21:22:03.084Z"
+}

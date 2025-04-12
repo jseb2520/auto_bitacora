@@ -7,8 +7,10 @@ const Transaction = require('../models/transaction');
 const binanceService = require('./binanceService');
 const revolutService = require('./revolutService');
 const krakenService = require('./krakenService');
+const gmailService = require('./gmailService');
 const googleSheetsService = require('./googleSheetsService');
 const { logger, createModuleLogger } = require('../utils/logger');
+const authClient = require('../utils/authClient');
 
 // Create a module-specific logger
 const moduleLogger = createModuleLogger('transactionService');
@@ -18,43 +20,114 @@ const moduleLogger = createModuleLogger('transactionService');
  */
 class TransactionService {
   /**
-   * Fetches today's transactions from all platforms, stores them in MongoDB, and syncs to Google Sheets
+   * Fetches today's transactions from Gmail for Binance, stores them in MongoDB, and syncs to Google Sheets
    * @returns {Promise<Array>} Array of saved and synced transactions
    */
   async fetchAndStoreTransactions() {
     try {
-      // Fetch transactions from Binance only (commenting out other platforms for now)
-      const [binanceTransactions] = await Promise.allSettled([
-        this.fetchBinanceTransactions(),
-        // Commenting out other platforms until they're properly configured
-        // this.fetchRevolutTransactions(),
-        // this.fetchKrakenTransactions()
-      ]);
+      moduleLogger.info('Starting transaction fetch process from Gmail');
       
-      const allTransactions = [
-        ...(binanceTransactions.status === 'fulfilled' ? binanceTransactions.value : []),
-        // Commented out other platforms until they're properly configured
-        // ...(revolutTransactions.status === 'fulfilled' ? revolutTransactions.value : []),
-        // ...(krakenTransactions.status === 'fulfilled' ? krakenTransactions.value : [])
-      ];
+      // Initialize authentication
+      await authClient.initialize();
       
-      if (allTransactions.length === 0) {
-        moduleLogger.info('No transactions found for today from any platform');
+      // Fetch Gmail transactions via the Binance email processing
+      const gmailTransactions = await this.fetchGmailBinanceTransactions();
+      
+      if (gmailTransactions.length === 0) {
+        moduleLogger.info('No transactions found from Gmail for today');
         return [];
       }
       
-      moduleLogger.info(`Processing ${allTransactions.length} transactions from all platforms`);
+      moduleLogger.info(`Processing ${gmailTransactions.length} transactions from Gmail`);
       
       // Store transactions in MongoDB
-      const savedTransactions = await this.saveTransactionsToDatabase(allTransactions);
+      const savedTransactions = await this.saveTransactionsToDatabase(gmailTransactions);
       
       // Sync unsynchronized transactions to Google Sheets
       await this.syncTransactionsToGoogleSheets();
       
       return savedTransactions;
     } catch (error) {
-      moduleLogger.error('Failed to fetch and store transactions:', error);
+      moduleLogger.error('Failed to fetch and store transactions:', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
+    }
+  }
+
+  /**
+   * Fetches today's Binance transactions from Gmail
+   * @returns {Promise<Array>} Array of transactions from Gmail
+   */
+  async fetchGmailBinanceTransactions() {
+    try {
+      moduleLogger.info('Starting Gmail Binance transaction fetch process');
+      
+      // Initialize Gmail service
+      await gmailService.initialize();
+      
+      // Get today's date range
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date();
+      endOfDay.setUTCHours(23, 59, 59, 999);
+      
+      // Convert to RFC 3339 format for Gmail API
+      const after = startOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const before = endOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      
+      moduleLogger.info(`Fetching Binance emails from ${after} to ${before}`);
+      
+      // Create search query for Binance emails
+      const query = `from:(${gmailService.binanceEmailAddresses.join(' OR ')}) after:${after} before:${before}`;
+      moduleLogger.debug(`Using Gmail query: ${query}`);
+      
+      // Fetch messages
+      const messages = await gmailService.gmail.users.messages.list({
+        userId: 'me',
+        q: query,
+        maxResults: 50
+      });
+      
+      const messageList = messages.data.messages || [];
+      moduleLogger.info(`Found ${messageList.length} Binance emails for today`);
+      
+      if (messageList.length === 0) {
+        moduleLogger.info('No Binance emails found for today');
+        return [];
+      }
+      
+      // Fetch full message data for all messages
+      const fullMessages = [];
+      for (const message of messageList) {
+        try {
+          const messageData = await gmailService.gmail.users.messages.get({
+            userId: 'me',
+            id: message.id,
+            format: 'full'
+          });
+          
+          fullMessages.push(messageData.data);
+        } catch (error) {
+          moduleLogger.error(`Error fetching message ${message.id}:`, {
+            error: error.message,
+            stack: error.stack
+          });
+        }
+      }
+      
+      // Process all emails
+      const transactions = await this.processBinanceEmails(fullMessages);
+      
+      return transactions;
+    } catch (error) {
+      moduleLogger.error('Failed to fetch Binance transactions from Gmail:', {
+        error: error.message,
+        stack: error.stack
+      });
+      return [];
     }
   }
 
@@ -397,6 +470,122 @@ class TransactionService {
       return transaction;
     } catch (error) {
       moduleLogger.error(`Failed to process webhook transaction:`, { error: error.message, data: transactionData });
+      throw error;
+    }
+  }
+
+  /**
+   * Processes Binance emails and extracts transaction data
+   * @param {Array} messages - Array of Gmail message objects
+   * @param {boolean} saveToDb - Whether to save transactions to database (default: true)
+   * @param {boolean} syncToSheets - Whether to sync to Google Sheets (default: true)
+   * @returns {Promise<Array>} Array of processed transactions
+   */
+  async processBinanceEmails(messages, saveToDb = true, syncToSheets = true) {
+    try {
+      moduleLogger.info(`Processing ${messages.length} Binance emails`);
+      
+      const allTransactions = [];
+      
+      for (const message of messages) {
+        try {
+          // Extract email data
+          const headers = message.payload.headers || [];
+          const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
+          const subject = subjectHeader ? subjectHeader.value : 'No Subject';
+          
+          const emailDate = new Date(parseInt(message.internalDate));
+          const body = gmailService.getEmailBody(message.payload);
+          
+          if (!body) {
+            moduleLogger.warn(`Could not extract body from email: ${message.id}`);
+            continue;
+          }
+          
+          // Check if we've already processed this message via the database (when running in main app)
+          if (saveToDb) {
+            try {
+              const EmailProcessingRecord = require('../models/emailProcessingRecord');
+              const existingRecord = await EmailProcessingRecord.findOne({ messageId: message.id });
+              
+              if (existingRecord) {
+                moduleLogger.info(`Skipping already processed email: ${message.id} (${subject})`);
+                continue;
+              }
+            } catch (dbError) {
+              moduleLogger.warn(`Could not check email processing record, will continue: ${dbError.message}`);
+            }
+          }
+          
+          // Extract transaction details
+          const transactions = gmailService.extractTransactionDetails(body, subject, emailDate);
+          
+          if (transactions && transactions.length > 0) {
+            // Add source, platform info, and message ID reference
+            transactions.forEach(tx => {
+              tx.sourceType = 'EMAIL';
+              tx.platform = 'BINANCE';
+              tx.status = 'COMPLETED';
+              
+              // Add metadata to track which email this transaction came from
+              tx.metadata = {
+                messageId: message.id,
+                subject: subject,
+                processedAt: new Date().toISOString()
+              };
+              
+              allTransactions.push(tx);
+            });
+            
+            moduleLogger.debug(`Successfully extracted ${transactions.length} transactions from email: ${subject}`);
+            
+            // Record this message as processed in the database (when running in main app)
+            if (saveToDb) {
+              try {
+                const EmailProcessingRecord = require('../models/emailProcessingRecord');
+                await EmailProcessingRecord.create({
+                  messageId: message.id,
+                  emailDate: emailDate,
+                  subject: subject,
+                  status: 'PROCESSED',
+                  transactionIds: transactions.map(tx => tx.orderId)
+                });
+                moduleLogger.debug(`Recorded email ${message.id} as processed in database`);
+              } catch (dbError) {
+                moduleLogger.warn(`Could not record email processing in database: ${dbError.message}`);
+              }
+            }
+          } else {
+            moduleLogger.debug(`No transactions found in email: ${subject}`);
+          }
+        } catch (error) {
+          moduleLogger.error(`Error processing email ${message.id}:`, {
+            error: error.message,
+            stack: error.stack
+          });
+        }
+      }
+      
+      moduleLogger.info(`Extracted ${allTransactions.length} transactions from ${messages.length} emails`);
+      
+      // Save to database if requested
+      if (saveToDb && allTransactions.length > 0) {
+        await this.saveTransactionsToDatabase(allTransactions);
+        moduleLogger.info(`Saved ${allTransactions.length} transactions to database`);
+      }
+      
+      // Sync to Google Sheets if requested
+      if (syncToSheets && allTransactions.length > 0) {
+        await googleSheetsService.writeTransactions(allTransactions);
+        moduleLogger.info(`Synced ${allTransactions.length} transactions to Google Sheets`);
+      }
+      
+      return allTransactions;
+    } catch (error) {
+      moduleLogger.error('Failed to process Binance emails:', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }

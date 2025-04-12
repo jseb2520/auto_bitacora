@@ -64,7 +64,7 @@ const config = {
   },
   googleSheets: {
     credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS || './credentials.json',
-    sheetId: process.env.GOOGLE_SHEET_ID,
+    sheetId: process.env.GOOGLE_SHEETS_ID,
   },
 };
 

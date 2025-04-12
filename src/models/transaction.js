@@ -51,8 +51,12 @@ const TransactionSchema = new mongoose.Schema({
   transactionType: {
     type: String,
     required: true,
-    enum: ['DEPOSIT', 'P2P_SELL', 'OTHER'],
+    enum: ['DEPOSIT', 'P2P_SELL', 'PAYMENT', 'WITHDRAWAL', 'TRADE', 'OTHER'],
     default: 'OTHER'
+  },
+  // Optional title field for emails like "Payment Transaction Detail"
+  title: {
+    type: String
   },
   symbol: {
     type: String,
@@ -113,6 +117,16 @@ const TransactionSchema = new mongoose.Schema({
   paymentDetails: {
     type: PaymentDetailsSchema,
     default: null
+  },
+  // Source of the transaction data
+  sourceType: {
+    type: String,
+    enum: ['API', 'GMAIL', 'MANUAL'],
+    default: 'API'
+  },
+  // Raw time string for reference
+  rawTimeString: {
+    type: String
   }
 }, {
   timestamps: true
@@ -129,5 +143,6 @@ TransactionSchema.index({ time: -1 });
 TransactionSchema.index({ status: 1 });
 TransactionSchema.index({ transactionType: 1 });
 TransactionSchema.index({ walletAddress: 1 });
+TransactionSchema.index({ sourceType: 1 });
 
 module.exports = mongoose.model('Transaction', TransactionSchema); 

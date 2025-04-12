@@ -1,0 +1,26 @@
+[
+  {
+    "orderId": "binance-payment-1744381502000-5b3yu0lb",
+    "platform": "BINANCE",
+    "transactionType": "PAYMENT",
+    "symbol": "USDT",
+    "quantity": 768.87,
+    "side": "SELL",
+    "type": "PAYMENT",
+    "status": "COMPLETED",
+    "time": "2025-04-11T14:25:02.000Z",
+    "updateTime": "2025-04-11T14:25:02.000Z",
+    "price": null,
+    "quoteQuantity": 768.87,
+    "sourceType": "EMAIL",
+    "paymentDetails": {
+      "currency": "USDT",
+      "method": "BINANCE_PAY"
+    },
+    "metadata": {
+      "messageId": "196269dea5a8cfd0",
+      "subject": "Fwd: [Binance]Payment Transaction Detail - 2025-04-11 14:25:02 (UTC)",
+      "processedAt": "2025-04-12T21:22:03.080Z"
+    }
+  }
+]

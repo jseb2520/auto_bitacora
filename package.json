@@ -5,22 +5,28 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest"
+    "test": "jest",
+    "generate-token": "node src/utils/generateToken.js",
+    "test-email-parser": "node src/utils/testEmailParser.js",
+    "test-sample-emails": "node src/utils/runSampleTest.js",
+    "email-cache": "node src/utils/cleanEmailCache.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
     "axios": "^1.8.4",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "express-rate-limit": "^7.1.5",
+    "express-rate-limit": "^7.5.0",
     "googleapis": "^148.0.0",
-    "helmet": "^7.1.0",
+    "helmet": "^8.1.0",
     "mongoose": "^8.13.2",
     "node-cron": "^3.0.3",
-    "winston": "^3.13.0"
+    "opener": "^1.5.2",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

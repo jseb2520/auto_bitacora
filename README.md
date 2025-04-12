@@ -60,7 +60,7 @@ KRAKEN_API_SECRET=your_kraken_api_secret
 
 # Google Sheets API
 GOOGLE_APPLICATION_CREDENTIALS=./credentials.json
-GOOGLE_SHEET_ID=your_google_sheet_id
+GOOGLE_SHEETS_ID=your_google_sheet_id
 ```
 
 4. Set up Google Sheets API:
@@ -196,4 +196,127 @@ This project is licensed under the ISC License.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. 
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+# Binance Email Transaction Logger
+
+Automatically log Binance cryptocurrency transactions from Gmail emails to Google Sheets.
+
+## Features
+- Automatically retrieves Binance transaction emails from Gmail
+- Parses transaction details from email content
+- Logs transactions to Google Sheets
+- Optionally stores transactions in MongoDB (main application only)
+- Prevents duplicate email processing with caching mechanism
+- Supports multiple transaction types:
+  - Deposits
+  - Withdrawals
+  - Payment Transactions
+
+## Prerequisites
+- Node.js installed
+- Gmail account with Binance transaction emails
+- Google Cloud Project with Gmail and Google Sheets APIs enabled
+- OAuth credentials (token.json) for Gmail API
+- Google Sheets ID (in .env file)
+- MongoDB (optional, for main app)
+
+## Setup
+1. Clone the repository
+2. Install dependencies with `npm install`
+3. Set up environment variables in `.env`:
+```
+GOOGLE_SHEETS_ID=your_google_sheet_id
+MONGO_URI=your_mongodb_connection_string  # Optional for main app
+```
+4. Ensure OAuth credentials are set up in `token.json`
+
+## Scripts
+
+### Email Parser Test
+Test script to retrieve and parse real Binance transaction emails:
+```
+npm run test-email-parser
+```
+This script:
+1. Connects to Gmail using OAuth
+2. Searches for Binance-related emails
+3. Skips already processed emails using local cache
+4. Parses transaction details from the emails
+5. Saves results to a local JSON file
+6. Writes data to Google Sheets
+
+### Sample Email Test
+Test the email parsing functionality with sample email content:
+```
+npm run test-sample-emails
+```
+This script tests the parsing logic with sample emails that match the format of real Binance emails.
+
+### Email Cache Management
+Manage the local email cache to prevent duplicate processing:
+```
+# Show cache status and statistics
+npm run email-cache
+
+# Remove emails older than 7 days
+npm run email-cache -- 7
+
+# Clear entire cache (creates a backup first)
+npm run email-cache -- all
+```
+
+### Main Application
+Run the main application which includes database storage:
+```
+npm start
+```
+
+## Duplicate Prevention
+
+The application implements two methods to prevent duplicate email processing:
+
+### 1. For the Test Script
+- Uses a local JSON file (`email-cache.json`) to track processed emails
+- Automatically skips emails that have already been processed
+- Stores metadata about processed emails including transaction IDs
+- Includes automatic cleanup of old cache entries
+
+### 2. For the Main Application
+- Uses MongoDB to track processed emails through the `EmailProcessingRecord` model
+- Records message IDs, processing status, and related transaction IDs
+- Prevents duplicate processing of the same email
+- Maintains a history of all processed emails
+
+## Transaction Types Supported
+1. **Deposits** - Funds added to your Binance account
+2. **Withdrawals** - Funds withdrawn from your Binance account
+3. **Payment Transactions** - P2P payments made through Binance
+
+## Code Structure
+- `src/services` - Core services for API communication
+- `src/utils` - Utility functions and test scripts
+  - `emailCache.js` - Local caching for test script
+- `src/models` - Database models for MongoDB
+  - `emailProcessingRecord.js` - Schema for tracking processed emails
+- `src/controllers` - Request handlers
+- `src/routes` - API routes
+- `src/middleware` - Express middleware
+
+## Testing
+Run the test scripts to verify functionality:
+```
+# Test with real emails (requires OAuth setup)
+npm run test-email-parser
+
+# Test with sample emails (offline testing)
+npm run test-sample-emails
+```
+
+## Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+## License
+MIT 
