@@ -54,14 +54,21 @@ async function testWithRealEmails() {
       console.log(`Cleared ${removedCount} old emails from cache`);
     }
     
-    // Fetch Binance emails from the last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const after = Math.floor(thirtyDaysAgo.getTime() / 1000);
+    // Fetch only current day's Binance emails (like in the main app)
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
     
-    // Create query to search for Binance emails - use a more general search term
-    const query = `binance after:${after}`;
-    console.log(`\n🔍 Searching for Binance emails with query: ${query}`);
+    const endOfDay = new Date();
+    endOfDay.setUTCHours(23, 59, 59, 999);
+    
+    // Convert to RFC 3339 format for Gmail API
+    const after = startOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const before = endOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    
+    // Create query to search for Binance emails for today only - match main app behavior
+    const fromQueries = gmailService.binanceEmailAddresses.map(email => `from:${email}`).join(' OR ');
+    const query = `(${fromQueries}) after:${after} before:${before}`;
+    console.log(`\n🔍 Searching for today's Binance emails with query: ${query}`);
     
     // Get message list
     const response = await gmail.users.messages.list({
