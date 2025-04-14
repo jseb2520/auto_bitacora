@@ -1,142 +1,290 @@
 /**
- * @fileoverview Simple cache utility to prevent processing duplicate emails
+ * @fileoverview Email cache utility to prevent processing duplicate emails
  * @module utils/emailCache
  */
 
 const fs = require('fs');
 const path = require('path');
-const { createModuleLogger } = require('./logger');
+const logger = require('./logger');
+const config = require('../config');
 
-// Create a module-specific logger
-const moduleLogger = createModuleLogger('emailCache');
+// Singleton instance
+let instance = null;
 
 /**
- * Email cache service for preventing duplicate email processing
+ * Email cache class to prevent processing duplicate emails
+ * In production, uses a MongoDB collection via EmailProcessingRecord model
+ * In development or testing, uses a local file cache
  */
 class EmailCache {
   /**
-   * Constructor
-   * @param {string} cacheFilePath - Path to the JSON cache file (relative to project root)
+   * Create an email cache instance
+   * @param {Object} options - Configuration options
+   * @param {boolean} [options.forceFileCache=false] - Force using file cache even in production
+   * @param {Object} [options.model] - Mongoose model to use for storing records (required in production)
    */
-  constructor(cacheFilePath = 'email-cache.json') {
-    this.cacheFilePath = path.join(process.cwd(), cacheFilePath);
-    this.cache = this.loadCache();
+  constructor(options = {}) {
+    this.options = {
+      forceFileCache: false,
+      ...options
+    };
+
+    this.useFileCache = !config.NODE_ENV || 
+                        config.NODE_ENV === 'development' || 
+                        config.NODE_ENV === 'test' || 
+                        this.options.forceFileCache;
+    
+    this.model = this.options.model;
+    this.cache = null;
+    
+    // Validate we have a model when not using file cache
+    if (!this.useFileCache && !this.model) {
+      throw new Error('EmailCache: Database model is required when not using file cache');
+    }
+
+    // When using file cache, prepare the file path
+    if (this.useFileCache) {
+      // Use the app's data directory or current directory for the cache file
+      const cacheDir = config.DATA_DIR || __dirname;
+      this.cacheFilePath = path.join(cacheDir, 'processed_emails_cache.json');
+      logger.debug(`EmailCache: Using file cache at ${this.cacheFilePath}`);
+    } else {
+      logger.debug('EmailCache: Using database cache with model:', this.model.modelName);
+    }
+
+    // Load cache on initialization
+    this.loadCache();
   }
 
   /**
-   * Load the cache from disk
-   * @returns {Object} The cache object
+   * Load the email cache from file (in dev mode) or initialize empty cache
    * @private
    */
   loadCache() {
-    try {
-      if (fs.existsSync(this.cacheFilePath)) {
-        const data = fs.readFileSync(this.cacheFilePath, 'utf8');
-        moduleLogger.debug(`Loaded email cache from ${this.cacheFilePath}`);
-        return JSON.parse(data);
+    if (this.useFileCache) {
+      try {
+        if (fs.existsSync(this.cacheFilePath)) {
+          const data = fs.readFileSync(this.cacheFilePath, 'utf8');
+          this.cache = JSON.parse(data);
+          logger.debug(`EmailCache: Loaded ${Object.keys(this.cache).length} cached email IDs from file`);
+        } else {
+          logger.debug(`EmailCache: Cache file not found, creating new cache`);
+          this.cache = {};
+          this.saveCache();
+        }
+      } catch (err) {
+        logger.error(`EmailCache: Error loading cache file: ${err.message}`);
+        this.cache = {};
       }
-      moduleLogger.debug(`No existing cache found at ${this.cacheFilePath}, creating new cache`);
-      return { processedEmails: {}, lastUpdated: new Date().toISOString() };
-    } catch (error) {
-      moduleLogger.error(`Error loading email cache: ${error.message}`);
-      return { processedEmails: {}, lastUpdated: new Date().toISOString() };
+    } else {
+      // When using database, we don't need to preload anything
+      this.cache = null;
     }
   }
 
   /**
-   * Save the cache to disk
+   * Save the email cache to file (only in dev mode)
    * @private
    */
   saveCache() {
-    try {
-      this.cache.lastUpdated = new Date().toISOString();
-      fs.writeFileSync(this.cacheFilePath, JSON.stringify(this.cache, null, 2));
-      moduleLogger.debug(`Saved email cache to ${this.cacheFilePath}`);
-    } catch (error) {
-      moduleLogger.error(`Error saving email cache: ${error.message}`);
+    if (this.useFileCache && this.cache) {
+      try {
+        const cacheDir = path.dirname(this.cacheFilePath);
+        if (!fs.existsSync(cacheDir)) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        fs.writeFileSync(this.cacheFilePath, JSON.stringify(this.cache, null, 2));
+        logger.debug(`EmailCache: Saved ${Object.keys(this.cache).length} email IDs to cache file`);
+      } catch (err) {
+        logger.error(`EmailCache: Error saving cache file: ${err.message}`);
+      }
     }
   }
 
   /**
-   * Check if an email has already been processed
+   * Check if an email has been processed
    * @param {string} messageId - The email message ID
-   * @returns {boolean} True if the email has been processed, false otherwise
+   * @returns {Promise<boolean>} - True if email has been processed
    */
-  isEmailProcessed(messageId) {
-    return !!this.cache.processedEmails[messageId];
+  async isProcessed(messageId) {
+    if (!messageId) {
+      logger.warn('EmailCache: Cannot check null messageId');
+      return false;
+    }
+
+    if (this.useFileCache) {
+      return !!this.cache[messageId];
+    } else {
+      try {
+        const record = await this.model.findOne({ messageId });
+        return !!record;
+      } catch (err) {
+        logger.error(`EmailCache: Error checking if email is processed: ${err.message}`);
+        return false;
+      }
+    }
   }
 
   /**
    * Mark an email as processed
    * @param {string} messageId - The email message ID
-   * @param {Object} metadata - Additional metadata to store (optional)
+   * @param {Object} [metadata={}] - Additional metadata about the email
+   * @returns {Promise<boolean>} - Success status
    */
-  markEmailAsProcessed(messageId, metadata = {}) {
-    this.cache.processedEmails[messageId] = {
-      processedAt: new Date().toISOString(),
-      ...metadata
-    };
-    this.saveCache();
-  }
+  async markProcessed(messageId, metadata = {}) {
+    if (!messageId) {
+      logger.warn('EmailCache: Cannot mark null messageId as processed');
+      return false;
+    }
 
-  /**
-   * Get information about a processed email
-   * @param {string} messageId - The email message ID
-   * @returns {Object|null} The email metadata or null if not found
-   */
-  getEmailInfo(messageId) {
-    return this.cache.processedEmails[messageId] || null;
-  }
-
-  /**
-   * Get all processed email IDs
-   * @returns {string[]} Array of processed email IDs
-   */
-  getAllProcessedEmailIds() {
-    return Object.keys(this.cache.processedEmails);
+    if (this.useFileCache) {
+      this.cache[messageId] = {
+        processedAt: new Date().toISOString(),
+        ...metadata
+      };
+      this.saveCache();
+      return true;
+    } else {
+      try {
+        // Use upsert to create or update the record
+        await this.model.updateOne(
+          { messageId },
+          { 
+            messageId,
+            processedAt: new Date(),
+            ...metadata
+          },
+          { upsert: true }
+        );
+        return true;
+      } catch (err) {
+        logger.error(`EmailCache: Error marking email as processed: ${err.message}`);
+        return false;
+      }
+    }
   }
 
   /**
    * Remove an email from the cache
    * @param {string} messageId - The email message ID
-   * @returns {boolean} True if the email was removed, false if it wasn't in the cache
+   * @returns {Promise<boolean>} - Success status
    */
-  removeEmail(messageId) {
-    if (this.cache.processedEmails[messageId]) {
-      delete this.cache.processedEmails[messageId];
-      this.saveCache();
-      return true;
+  async removeEmail(messageId) {
+    if (!messageId) {
+      logger.warn('EmailCache: Cannot remove null messageId');
+      return false;
     }
-    return false;
+
+    if (this.useFileCache) {
+      if (this.cache[messageId]) {
+        delete this.cache[messageId];
+        this.saveCache();
+        logger.debug(`EmailCache: Removed email ${messageId} from cache`);
+        return true;
+      }
+      return false;
+    } else {
+      try {
+        const result = await this.model.deleteOne({ messageId });
+        const success = result.deletedCount > 0;
+        if (success) {
+          logger.debug(`EmailCache: Removed email ${messageId} from database`);
+        }
+        return success;
+      } catch (err) {
+        logger.error(`EmailCache: Error removing email from database: ${err.message}`);
+        return false;
+      }
+    }
   }
 
   /**
-   * Clear emails from the cache that are older than the specified number of days
-   * @param {number} days - Number of days to keep emails in the cache
-   * @returns {number} Number of emails removed from the cache
+   * Clear emails older than the specified days
+   * @param {number} days - Number of days to keep emails for
+   * @returns {Promise<number>} - Number of emails cleared
    */
-  clearOldEmails(days = 30) {
+  async clearOldEmails(days = 30) {
+    if (this.useFileCache) {
+      return this._clearOldEmailsFromFileCache(days);
+    } else {
+      try {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        
+        const result = await this.model.deleteMany({
+          processedAt: { $lt: cutoffDate }
+        });
+        
+        const count = result.deletedCount || 0;
+        logger.info(`EmailCache: Cleared ${count} old emails from database (older than ${days} days)`);
+        return count;
+      } catch (err) {
+        logger.error(`EmailCache: Error clearing old emails from database: ${err.message}`);
+        return 0;
+      }
+    }
+  }
+
+  /**
+   * Clear old emails from file cache
+   * @param {number} days - Number of days to keep emails for
+   * @returns {Promise<number>} - Number of emails cleared
+   * @private
+   */
+  _clearOldEmailsFromFileCache(days) {
+    if (!this.cache) return 0;
+    
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
-    const cutoffIso = cutoffDate.toISOString();
     
-    let removedCount = 0;
+    let count = 0;
+    const newCache = {};
     
-    Object.entries(this.cache.processedEmails).forEach(([messageId, metadata]) => {
-      if (metadata.processedAt < cutoffIso) {
-        delete this.cache.processedEmails[messageId];
-        removedCount++;
+    for (const [messageId, data] of Object.entries(this.cache)) {
+      const processedAt = new Date(data.processedAt);
+      
+      if (processedAt >= cutoffDate) {
+        newCache[messageId] = data;
+      } else {
+        count++;
       }
-    });
-    
-    if (removedCount > 0) {
-      this.saveCache();
-      moduleLogger.info(`Cleared ${removedCount} old emails from cache`);
     }
     
-    return removedCount;
+    // Only update and save if emails were actually cleared
+    if (count > 0) {
+      this.cache = newCache;
+      this.saveCache();
+      logger.info(`EmailCache: Cleared ${count} old emails from file cache (older than ${days} days)`);
+    }
+    
+    return count;
   }
 }
 
-// Export a singleton instance
-module.exports = new EmailCache(); 
+/**
+ * Get the singleton instance of EmailCache
+ * @param {Object} options - Options to pass to EmailCache constructor
+ * @returns {EmailCache} - The singleton EmailCache instance
+ */
+function getInstance(options = {}) {
+  if (!instance) {
+    instance = new EmailCache(options);
+  }
+  return instance;
+}
+
+/**
+ * Create a new instance of EmailCache
+ * This is useful for testing or when you need multiple instances
+ * @param {Object} options - Options to pass to EmailCache constructor
+ * @returns {EmailCache} - A new EmailCache instance
+ */
+function createInstance(options = {}) {
+  return new EmailCache(options);
+}
+
+module.exports = {
+  EmailCache,
+  getInstance,
+  createInstance
+}; 

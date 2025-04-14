@@ -3,13 +3,22 @@
  * @module services/gmailService
  */
 
+const { default: axios } = require('axios');
 const { google } = require('googleapis');
+const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
+const config = require('../config');
 const authClient = require('../utils/authClient');
 const EmailProcessingRecord = require('../models/emailProcessingRecord');
 const { logger, createModuleLogger } = require('../utils/logger');
+const { getInstance: getEmailCache } = require('../utils/emailCache');
 
 // Create a module-specific logger
 const moduleLogger = createModuleLogger('gmailService');
+
+// Initialize email cache (will use database in production, file in development)
+const emailCache = getEmailCache({ EmailProcessingRecord });
 
 // Colombia timezone (UTC-5)
 const TIMEZONE_OFFSET = -5;
@@ -226,27 +235,28 @@ class GmailService {
       
       // Process each message
       const processedTransactions = [];
-
+      
       for (const message of messages) {
         try {
           // Check if we already processed this message
-          const existingRecord = await EmailProcessingRecord.findOne({ messageId: message.id });
-
-          if (existingRecord) {
+          const emailProcessingRecord = require('../models/emailProcessingRecord');
+          const isProcessed = await emailCache.isProcessed(message.id);
+          
+          if (isProcessed) {
             moduleLogger.debug(`Skipping already processed email: ${message.id}`);
             continue;
           }
-
+          
           // Fetch and process the message
           const transactions = await this.processEmail(message.id);
-
+          
           if (transactions && transactions.length > 0) {
             processedTransactions.push(...transactions);
           }
         } catch (err) {
           moduleLogger.error(`Error processing email ${message.id}:`, err);
           // Record the failure but continue processing other emails
-          await EmailProcessingRecord.create({
+          await emailProcessingRecord.create({
             messageId: message.id,
             emailDate: new Date(), // We don't have the exact date without fetching the email
             status: 'FAILED',
@@ -254,7 +264,7 @@ class GmailService {
           });
         }
       }
-
+      
       moduleLogger.info(`Successfully processed ${processedTransactions.length} transactions from ${messages.length} emails`);
       return processedTransactions;
     } catch (error) {
@@ -276,92 +286,102 @@ class GmailService {
   async processEmail(messageId) {
     try {
       moduleLogger.debug(`Processing email: ${messageId}`);
-
+      
       // Fetch the full message
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
         format: 'full'
       });
-
+      
       // Check if it's a Binance email 
       if (!this.isFromBinance(message.data)) {
         moduleLogger.debug(`Skipping non-Binance email: ${messageId}`);
-
+        
         // Record that we looked at this email but ignored it
-        await EmailProcessingRecord.create({
-          messageId: messageId,
-          emailDate: new Date(),
+        await emailCache.markProcessed(messageId, {
           status: 'IGNORED',
           errorMessage: 'Not a Binance email'
         });
-
+        
         return [];
       }
-
+      
       // Extract email headers
       const headers = message.data.payload.headers;
       const subject = headers.find(header => header.name === 'Subject')?.value || '';
       const from = headers.find(header => header.name === 'From')?.value || '';
       const date = headers.find(header => header.name === 'Date')?.value || '';
       const emailDate = new Date(date);
-
+      
       moduleLogger.debug(`Email details: Subject="${subject}", Date=${emailDate.toISOString()}`);
-
+      
       // Only process transaction-related emails
       if (!this.isTransactionEmail(message.data)) {
         moduleLogger.debug(`Skipping non-transaction email: "${subject}"`);
-
+        
         // Record that we looked at this email but ignored it
-        await EmailProcessingRecord.create({
-          messageId: messageId,
+        await emailCache.markProcessed(messageId, {
           emailDate: emailDate,
           subject: subject,
           from: from,
           status: 'IGNORED'
         });
-
+        
         return [];
       }
-
+      
       // Extract email body
       const body = this.getEmailBody(message.data.payload);
-
+      
+      if (!body) {
+        moduleLogger.warn(`Could not extract body from email: ${messageId}`);
+        
+        await emailCache.markProcessed(messageId, {
+          emailDate: emailDate,
+          subject: subject,
+          from: from,
+          status: 'FAILED',
+          errorMessage: 'Could not extract email body'
+        });
+        
+        return [];
+      }
+      
       // Extract transaction details from the email
       const transactions = this.extractTransactionDetails(body, subject, emailDate);
-
+      
       // If no transactions found, log and return empty array
       if (!transactions || transactions.length === 0) {
         moduleLogger.debug(`No transaction details found in email: "${subject}"`);
-
-        await EmailProcessingRecord.create({
-          messageId: messageId,
+        
+        await emailCache.markProcessed(messageId, {
           emailDate: emailDate,
           subject: subject,
           from: from,
           status: 'IGNORED',
           errorMessage: 'No transaction details found'
         });
-
+        
         return [];
       }
-
+      
       // Record the successful processing
       const transactionIds = transactions.map(tx => tx.orderId);
-
-      await EmailProcessingRecord.create({
-        messageId: messageId,
+      
+      await emailCache.markProcessed(messageId, {
         emailDate: emailDate,
         subject: subject,
         from: from,
         status: 'PROCESSED',
-        transactionIds: transactionIds
+        transactionIds: transactionIds,
+        transactionCount: transactions.length
       });
-
+      
       moduleLogger.info(`Extracted ${transactions.length} transactions from email: "${subject}"`);
       return transactions;
     } catch (error) {
-      moduleLogger.error(`Failed to process email ${messageId}`, {
+      moduleLogger.error(`Failed to process email ${messageId}`, { 
         error: error.message,
         stack: error.stack,
         code: error.code,

@@ -11,6 +11,8 @@ const routes = require('./routes');
 const { initializeScheduler } = require('./scheduler'); // Import our new scheduler
 const middleware = require('./middleware');
 const { logger } = require('./utils/logger');
+const { getEmailCache } = require('./utils/emailCache');
+const EmailProcessingRecord = require('./models/emailProcessingRecord');
 
 // Initialize Express app
 const app = express();
@@ -83,6 +85,10 @@ const startServer = async () => {
   try {
     // Connect to MongoDB
     await connectDatabase();
+    
+    // Initialize the email cache with the model for production use
+    const emailCache = getEmailCache({ EmailProcessingRecord });
+    logger.info('EmailCache initialized for production use with database');
     
     // Start the Express server
     const PORT = config.server.port;

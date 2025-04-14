@@ -1,27 +1,26 @@
 # Auto Bitacora
 
-A Node.js microservice that fetches cryptocurrency transactions from multiple platforms (Binance, Revolut, and Kraken) for the current day, stores them in MongoDB, and syncs them to Google Sheets. The service also provides webhook endpoints for real-time updates from all supported platforms.
+A Node.js microservice that automatically logs cryptocurrency transactions from Binance by processing transaction emails received in Gmail. The service stores transactions in MongoDB and syncs them to Google Sheets for easy tracking and reporting.
 
 ## Features
 
-- Daily fetching of cryptocurrency transactions from multiple platforms:
-  - Binance
-  - Revolut
-  - Kraken
+- Automatic email processing:
+  - Fetches Binance transaction emails from Gmail
+  - Parses transaction details from email content
+  - Supports multiple transaction types (deposits, withdrawals, payments, trades, P2P)
 - Persistent storage in MongoDB
 - Synchronization with Google Sheets
+- Scheduled daily processing at 7PM Colombia time (UTC-5)
 - Webhook endpoints for real-time transaction updates
-- Scheduled tasks using node-cron
+- Duplicate prevention with EmailCache
 
 ## Prerequisites
 
 - Node.js (v14 or higher)
 - MongoDB
-- Google Cloud Platform account with Google Sheets API enabled
-- Accounts with API credentials for one or more of:
-  - Binance
-  - Revolut
-  - Kraken
+- Google Cloud Platform account with Gmail API and Google Sheets API enabled
+- Gmail account with Binance transaction emails
+- Google OAuth credentials (for Gmail API access)
 
 ## Installation
 
@@ -45,45 +44,38 @@ NODE_ENV=development
 # MongoDB Connection
 MONGODB_URI=mongodb://localhost:27017/auto_bitacora
 
-# Binance API Credentials
+# Google API Configuration
+GOOGLE_CREDENTIALS_PATH=./credentials.json
+GOOGLE_TOKEN_PATH=./token.json
+GOOGLE_SHEETS_ID=your_google_sheet_id
+
+# Optional: API credentials for direct API access (secondary method)
 BINANCE_API_KEY=your_binance_api_key
 BINANCE_API_SECRET=your_binance_api_secret
-
-# Revolut API Credentials
-REVOLUT_API_KEY=your_revolut_api_key
-REVOLUT_API_SECRET=your_revolut_api_secret
-REVOLUT_CLIENT_ID=your_revolut_client_id
-
-# Kraken API Credentials
-KRAKEN_API_KEY=your_kraken_api_key
-KRAKEN_API_SECRET=your_kraken_api_secret
-
-# Google Sheets API
-GOOGLE_APPLICATION_CREDENTIALS=./credentials.json
-GOOGLE_SHEETS_ID=your_google_sheet_id
 ```
 
-4. Set up Google Sheets API:
+4. Set up Google API access:
    - Create a project in Google Cloud Platform
-   - Enable Google Sheets API
-   - Create a service account and download the credentials as `credentials.json`
-   - Place the `credentials.json` file in the root directory
-   - Share your Google Sheet with the service account email
+   - Enable Gmail API and Google Sheets API
+   - Create OAuth credentials and download as `credentials.json`
+   - Run the token generation utility: `npm run generate-token`
+   - Share your Google Sheet with your Google account
 
 ## Google Sheet Setup
 
 Your Google Sheet should have a sheet named "Transactions" with the following columns:
-1. Order ID
-2. Platform (BINANCE, REVOLUT, or KRAKEN)
-3. Symbol
-4. Side
-5. Type
-6. Price
-7. Quantity
-8. Quote Quantity
+1. Date
+2. Order ID
+3. Platform
+4. Transaction Type
+5. Symbol
+6. Side
+7. Type
+8. Quantity
 9. Status
 10. Time
 11. Update Time
+12. Source
 
 ## Usage
 
@@ -101,10 +93,31 @@ This will start the service with nodemon for automatic reloading on file changes
 npm start
 ```
 
-### Testing
+### Email Parser Testing
+
+To test the email parsing functionality:
 
 ```bash
-npm test
+# Test with real emails from your Gmail account
+npm run test-email-parser
+
+# Test with sample emails (offline testing)
+npm run test-sample-emails
+```
+
+### Email Cache Management
+
+To manage the email cache (for development/testing):
+
+```bash
+# Show cache status
+npm run email-cache
+
+# Clear emails older than 30 days
+npm run email-cache 30
+
+# Clear all emails (creates backup first)
+npm run email-cache all
 ```
 
 ## API Endpoints
@@ -118,45 +131,54 @@ Returns the status of the service.
 ### Webhooks for Transaction Updates
 ```
 POST /api/webhook/binance
-POST /api/webhook/revolut
-POST /api/webhook/kraken
 ```
-Endpoints for receiving transaction updates from respective platforms.
+Endpoint for receiving transaction updates from Binance platform.
 
 ## Scheduled Tasks
 
-- **Daily Transaction Fetch**: Runs at midnight UTC every day to fetch all transactions for the current day from all configured platforms.
+- **Daily Email Processing**: Runs at 7:00 PM Colombia time (UTC-5) every day to fetch and process Binance transaction emails for the current day.
 
-## Webhook Configuration
+## How It Works
 
-### Binance Webhook Setup
-1. Log in to your Binance account
-2. Navigate to API Management
-3. Set up a webhook with the URL of your deployed service (e.g., `https://your-service.com/api/webhook/binance`)
-4. Configure the webhook to listen for order updates
+### Email Processing Flow
 
-### Revolut Webhook Setup
-1. Log in to your Revolut Business account
-2. Go to Developer Settings
-3. Create a new webhook with the URL of your deployed service (e.g., `https://your-service.com/api/webhook/revolut`)
-4. Select "Transactions" as the event type
+1. The scheduler triggers email processing at 7:00 PM Colombia time (UTC-5)
+2. The system uses Gmail API to fetch Binance emails received during the current day
+3. For each email, the system:
+   - Checks if it's already been processed (to prevent duplicates)
+   - Identifies the transaction type based on subject and content
+   - Extracts transaction details using specialized parsers
+   - Saves the transaction to MongoDB
+   - Marks the email as processed in the EmailCache
+4. After processing all emails, transactions are synced to Google Sheets
 
-### Kraken Webhook Setup
-1. Log in to your Kraken account
-2. Go to Settings > API
-3. Set up a webhook with the URL of your deployed service (e.g., `https://your-service.com/api/webhook/kraken`)
-4. Configure the webhook to listen for order updates
+### Email Parsing Logic
+
+The system supports parsing various types of Binance emails:
+
+1. **Deposits** - "USDT Deposit Confirmed"
+2. **Withdrawals** - "USDT Withdrawal Successful"
+3. **P2P Trades** - "P2P order completed"
+4. **Regular Trades** - "Order Filled"
+5. **Payments** - "Payment Transaction Detail"
+
+### Duplicate Prevention
+
+To prevent processing the same email twice:
+- In production, the system uses MongoDB to track processed emails
+- In development/testing, a local JSON file is used
+- Each email is tracked by its unique message ID
+- Old entries are automatically cleaned up to prevent cache growth
 
 ## Architecture
 
 The service follows a modular architecture with clear separation of concerns:
 
 - **Config**: Environment configuration
-- **Controllers**: Request handlers
-- **Models**: Data models
-- **Routes**: API routes
-- **Services**: Business logic
-- **Utils**: Utility functions and helpers
+- **Models**: Data models for MongoDB
+- **Services**: Business logic for email processing, parsing, and integration
+- **Utils**: Utility functions including EmailCache and logging
+- **Scheduler**: Cron job for daily email processing
 
 ## Project Structure
 
@@ -165,158 +187,76 @@ auto_bitacora/
 ├── src/
 │   ├── config/
 │   │   └── index.js
-│   ├── controllers/
-│   │   ├── webhookController.js
-│   │   ├── revolutWebhookController.js
-│   │   └── krakenWebhookController.js
 │   ├── models/
-│   │   └── transaction.js
-│   ├── routes/
-│   │   └── index.js
+│   │   ├── transaction.js
+│   │   └── emailProcessingRecord.js
 │   ├── services/
-│   │   ├── binanceService.js
-│   │   ├── revolutService.js
-│   │   ├── krakenService.js
+│   │   ├── gmailService.js
 │   │   ├── googleSheetsService.js
 │   │   └── transactionService.js
 │   ├── utils/
+│   │   ├── authClient.js
 │   │   ├── database.js
-│   │   └── scheduler.js
+│   │   ├── emailCache.js
+│   │   └── logger.js
+│   ├── scheduler.js
 │   └── index.js
+├── docs/
+│   ├── DOCUMENTATION.md
+│   └── gmail_integration.md
 ├── .env
-├── .gitignore
-├── package.json
 ├── credentials.json
+├── token.json
+├── package.json
 └── README.md
 ```
 
-## License
+## Documentation
 
-This project is licensed under the ISC License.
+For more detailed documentation, see:
+
+- [Technical Documentation](docs/DOCUMENTATION.md)
+- [Gmail Integration Guide](docs/gmail_integration.md)
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Authentication Problems:**
+   - Ensure credentials.json is correctly configured
+   - Check that your token.json contains a refresh_token field
+   - Try regenerating the token with `npm run generate-token`
+
+2. **Email Parsing Issues:**
+   - Check the logs for parsing errors
+   - You may need to update regex patterns if Binance changes their email format
+   - Test with `npm run test-email-parser`
+
+3. **No Emails Found:**
+   - Verify the email query is correct
+   - Check if emails are arriving in your Gmail account
+   - Ensure the date range is correctly set for Colombia timezone (UTC-5)
+
+4. **MongoDB Connection:**
+   - Verify your MongoDB connection string
+   - Ensure MongoDB is running and accessible
+
+### Viewing Logs
+
+The system uses detailed logging to help with troubleshooting:
+
+```bash
+# View all logs
+cat logs/combined.log
+
+# View error logs
+cat logs/error.log
+```
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-# Binance Email Transaction Logger
-
-Automatically log Binance cryptocurrency transactions from Gmail emails to Google Sheets.
-
-## Features
-- Automatically retrieves Binance transaction emails from Gmail
-- Parses transaction details from email content
-- Logs transactions to Google Sheets
-- Optionally stores transactions in MongoDB (main application only)
-- Prevents duplicate email processing with caching mechanism
-- Supports multiple transaction types:
-  - Deposits
-  - Withdrawals
-  - Payment Transactions
-
-## Prerequisites
-- Node.js installed
-- Gmail account with Binance transaction emails
-- Google Cloud Project with Gmail and Google Sheets APIs enabled
-- OAuth credentials (token.json) for Gmail API
-- Google Sheets ID (in .env file)
-- MongoDB (optional, for main app)
-
-## Setup
-1. Clone the repository
-2. Install dependencies with `npm install`
-3. Set up environment variables in `.env`:
-```
-GOOGLE_SHEETS_ID=your_google_sheet_id
-MONGO_URI=your_mongodb_connection_string  # Optional for main app
-```
-4. Ensure OAuth credentials are set up in `token.json`
-
-## Scripts
-
-### Email Parser Test
-Test script to retrieve and parse real Binance transaction emails:
-```
-npm run test-email-parser
-```
-This script:
-1. Connects to Gmail using OAuth
-2. Searches for Binance-related emails
-3. Skips already processed emails using local cache
-4. Parses transaction details from the emails
-5. Saves results to a local JSON file
-6. Writes data to Google Sheets
-
-### Sample Email Test
-Test the email parsing functionality with sample email content:
-```
-npm run test-sample-emails
-```
-This script tests the parsing logic with sample emails that match the format of real Binance emails.
-
-### Email Cache Management
-Manage the local email cache to prevent duplicate processing:
-```
-# Show cache status and statistics
-npm run email-cache
-
-# Remove emails older than 7 days
-npm run email-cache -- 7
-
-# Clear entire cache (creates a backup first)
-npm run email-cache -- all
-```
-
-### Main Application
-Run the main application which includes database storage:
-```
-npm start
-```
-
-## Duplicate Prevention
-
-The application implements two methods to prevent duplicate email processing:
-
-### 1. For the Test Script
-- Uses a local JSON file (`email-cache.json`) to track processed emails
-- Automatically skips emails that have already been processed
-- Stores metadata about processed emails including transaction IDs
-- Includes automatic cleanup of old cache entries
-
-### 2. For the Main Application
-- Uses MongoDB to track processed emails through the `EmailProcessingRecord` model
-- Records message IDs, processing status, and related transaction IDs
-- Prevents duplicate processing of the same email
-- Maintains a history of all processed emails
-
-## Transaction Types Supported
-1. **Deposits** - Funds added to your Binance account
-2. **Withdrawals** - Funds withdrawn from your Binance account
-3. **Payment Transactions** - P2P payments made through Binance
-
-## Code Structure
-- `src/services` - Core services for API communication
-- `src/utils` - Utility functions and test scripts
-  - `emailCache.js` - Local caching for test script
-- `src/models` - Database models for MongoDB
-  - `emailProcessingRecord.js` - Schema for tracking processed emails
-- `src/controllers` - Request handlers
-- `src/routes` - API routes
-- `src/middleware` - Express middleware
-
-## Testing
-Run the test scripts to verify functionality:
-```
-# Test with real emails (requires OAuth setup)
-npm run test-email-parser
-
-# Test with sample emails (offline testing)
-npm run test-sample-emails
-```
-
-## Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
-
 ## License
-MIT 
+
+This project is licensed under the ISC License. 

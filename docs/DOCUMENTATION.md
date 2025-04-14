@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Auto Bitacora is a Node.js microservice designed to fetch and store Binance transactions from the current day. It uses MongoDB for persistent storage and Google Sheets for data visualization and reporting. The service also includes a webhook endpoint for real-time transaction updates from Binance.
+Auto Bitacora is a Node.js microservice designed to fetch and store Binance transactions. It primarily uses Gmail API to retrieve transaction emails, parse them using specialized algorithms, and then store the transactions in MongoDB and Google Sheets for visualization and reporting. The service also includes webhook endpoints for real-time transaction updates.
 
 ## Architecture
 
@@ -15,12 +15,14 @@ The service follows a modular architecture with clear separation of concerns, ma
 3. **Data Layer**: MongoDB models and persistence
 4. **Integration Layer**: Google Sheets integration
 5. **Scheduler**: Cron jobs for periodic tasks
+6. **Email Processing**: Gmail API integration and email parsing
 
 ### Workflow
 
-1. **Scheduled Data Fetch**:
-   - A daily cron job runs at midnight UTC
-   - The service fetches all transactions from Binance for the current day
+1. **Scheduled Email Processing**:
+   - A daily cron job runs at 7PM Colombia time (UTC-5)
+   - The service fetches transaction emails from Binance received during the current day
+   - Emails are parsed to extract transaction details
    - Transactions are stored in MongoDB
    - Unsynced transactions are synchronized with Google Sheets
 
@@ -70,17 +72,45 @@ const transactionSchema = new mongoose.Schema({
 });
 ```
 
-### Binance Service (`src/services/binanceService.js`)
+### Email Processing Record Model (`src/models/emailProcessingRecord.js`)
 
-Handles communication with the Binance API, including authentication, request signing, and data fetching.
+Defines the MongoDB schema for tracking processed emails to prevent duplicate processing.
 
 ```javascript
-// Main method to fetch today's transactions
-async fetchTodayTransactions() {
-  // Calculate start of day
-  // Make authenticated request to Binance API
-  // Process and return transaction data
-}
+// Schema for email processing records
+const emailProcessingRecordSchema = new mongoose.Schema({
+  messageId, processedAt, emailDate, subject, 
+  status, errorMessage, transactionCount, 
+  transactionIds, metadata
+});
+```
+
+### Gmail Service (`src/services/gmailService.js`)
+
+Handles fetching emails from Gmail API, authenticating, and parsing transaction details from email content.
+
+```javascript
+// Main methods
+async initialize() { /* Authentication logic */ }
+async fetchTodayBinanceEmails() { /* Fetch emails from today */ }
+async processEmail(messageId) { /* Process a single email */ }
+extractTransactionDetails(body, subject, emailDate) { /* Parse transaction details */ }
+parseDepositEmail(body, emailDate) { /* Parse deposit emails */ }
+parseWithdrawalEmail(body, emailDate) { /* Parse withdrawal emails */ }
+parseP2PEmail(body, emailDate) { /* Parse P2P trade emails */ }
+parseTradeEmail(body, emailDate, side) { /* Parse trade emails */ }
+parsePaymentEmail(body, subject, emailDate) { /* Parse payment emails */ }
+```
+
+### Email Cache (`src/utils/emailCache.js`)
+
+Manages caching of processed emails to prevent duplicate processing. Can use either database storage (production) or file-based storage (development).
+
+```javascript
+// Main methods
+async isProcessed(messageId) { /* Check if an email has been processed */ }
+async markProcessed(messageId, metadata) { /* Mark an email as processed */ }
+async clearOldEmails(days) { /* Remove old emails from cache */ }
 ```
 
 ### Google Sheets Service (`src/services/googleSheetsService.js`)
@@ -103,9 +133,10 @@ Coordinates the business logic for fetching, storing, and syncing transactions.
 ```javascript
 // Main methods
 async fetchAndStoreTransactions() { /* ... */ }
+async fetchGmailBinanceTransactions() { /* Fetch from Gmail API */ }
 async saveTransactionsToDatabase(transactions) { /* ... */ }
 async syncTransactionsToGoogleSheets() { /* ... */ }
-async processWebhookTransaction(transactionData) { /* ... */ }
+async processBinanceEmails(messages, saveToDb, syncToSheets) { /* Process emails */ }
 ```
 
 ### Webhook Controller (`src/controllers/webhookController.js`)
@@ -122,15 +153,21 @@ const handleWebhook = async (req, res) => {
 };
 ```
 
-### Scheduler (`src/utils/scheduler.js`)
+### Scheduler (`src/scheduler.js`)
 
 Manages scheduled tasks using node-cron.
 
 ```javascript
 // Initialize scheduled tasks
-initTasks() {
-  // Schedule the daily transaction fetch
-  // Schedule other tasks as needed
+function initializeScheduler() {
+  // Schedule email processing at 7:00 PM Colombia time (UTC-5)
+  cron.schedule('0 0 * * *', async () => {
+    // Process today's Binance emails
+    // Sync unsynced transactions to Google Sheets
+  }, {
+    scheduled: true,
+    timezone: "America/Bogota" // Colombia timezone
+  });
 }
 ```
 
@@ -143,6 +180,7 @@ The entry point that orchestrates the entire application.
 // Middleware setup
 // Route registration
 // Database connection
+// Email cache initialization
 // Server startup
 // Scheduled tasks initialization
 // Graceful shutdown handling
@@ -159,8 +197,12 @@ The entry point that orchestrates the entire application.
    - Rejection of requests with invalid signatures
 
 3. **Google Sheets Authentication**:
-   - Service account credentials with limited permissions
-   - JWT authentication for Google API requests
+   - OAuth 2.0 authentication for Google API requests
+   - Token refresh handling for long-term operation
+
+4. **Email Processing Security**:
+   - Duplicate prevention with EmailCache
+   - Validation of email senders
 
 ## Extensibility
 
@@ -174,9 +216,9 @@ The modular architecture allows for easy extension:
    - New services can be added for other reporting tools
    - The transaction service can be extended to handle additional synchronization needs
 
-3. **Additional Scheduled Tasks**:
-   - The scheduler can be extended to include more cron jobs
-   - Existing services can be leveraged for new periodic tasks
+3. **Additional Email Parsers**:
+   - The gmailService can be extended with new parsers for different email formats
+   - The existing parsers can be updated to handle changes in email templates
 
 ## Error Handling and Logging
 
@@ -187,24 +229,21 @@ The modular architecture allows for easy extension:
 
 2. **Logging**:
    - Detailed logs for debugging and monitoring
-   - Timestamp information for tracking operation sequence
-   - Error-specific logging for troubleshooting
+   - Transaction-specific logging for tracking processing flow
+   - Email-specific logging for troubleshooting parsing issues
 
 ## Testing
 
-The project structure supports different types of tests:
+The project includes testing utilities:
 
-1. **Unit Tests**:
-   - Testing individual functions and methods
-   - Mocking external dependencies
+1. **Email Parser Testing**:
+   - `testEmailParser.js` for testing with real emails
+   - Sample email tests for offline testing
+   - Cached results to prevent duplicate processing during testing
 
-2. **Integration Tests**:
-   - Testing interactions between modules
-   - Testing database operations
-
-3. **End-to-End Tests**:
-   - Testing the complete workflow
-   - Testing API endpoints
+2. **Email Cache Testing**:
+   - Tools for managing the email cache
+   - Utilities for clearing old cache entries
 
 ## Deployment Considerations
 
@@ -216,10 +255,11 @@ The project structure supports different types of tests:
    - Connection string configurable via environment variables
    - Reconnection logic for handling temporary disconnections
 
-3. **Port Configuration**:
-   - Server port configurable via environment variables
-   - Default port provided for local development
+3. **Email Processing Configuration**:
+   - File-based cache for development
+   - Database-based cache for production
+   - Timezone configuration for Colombia (UTC-5)
 
 4. **Graceful Shutdown**:
    - Signal handler for cleaning up resources
-   - Stopping scheduled tasks before exit 
+   - Timeout-based forced shutdown if graceful shutdown fails 

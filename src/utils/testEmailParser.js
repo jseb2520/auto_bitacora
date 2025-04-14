@@ -12,7 +12,10 @@ const gmailService = require('../services/gmailService');
 const googleSheetsService = require('../services/googleSheetsService');
 const transactionService = require('../services/transactionService');
 const authClient = require('../utils/authClient');
-const emailCache = require('../utils/emailCache');
+const EmailProcessingRecord = require('../models/emailProcessingRecord');
+const emailCacheModule = require('../utils/emailCache');
+// Create a testing-specific instance with file cache forced
+const emailCache = emailCacheModule.createInstance({ forceFileCache: true });
 const { logger } = require('../utils/logger');
 const dotenv = require('dotenv');
 
@@ -52,7 +55,7 @@ async function testWithRealEmails() {
     googleSheetsService.auth = auth;
     
     // Clear old emails from cache (older than 30 days)
-    const removedCount = emailCache.clearOldEmails(30);
+    const removedCount = await emailCache.clearOldEmails(30);
     if (removedCount > 0) {
       console.log(`Cleared ${removedCount} old emails from cache`);
     }
@@ -124,7 +127,8 @@ async function testWithRealEmails() {
     
     for (const message of todayMessages) {
       // Check if this email has already been processed
-      if (emailCache.isEmailProcessed(message.id)) {
+      const isProcessed = await emailCache.isProcessed(message.id);
+      if (isProcessed) {
         console.log(`\n📨 Skipping already processed email ID: ${message.id}`);
         skippedCount++;
         continue;
@@ -164,7 +168,7 @@ async function testWithRealEmails() {
     console.log(`\n📊 Total transactions parsed: ${allTransactions.length}`);
     
     // Mark all processed emails as processed in cache
-    fullMessages.forEach(message => {
+    for (const message of fullMessages) {
       const subjectHeader = message.payload.headers.find(
         header => header.name.toLowerCase() === 'subject'
       );
@@ -177,13 +181,13 @@ async function testWithRealEmails() {
       
       const transactionIds = relatedTransactions.map(tx => tx.orderId || '');
       
-      emailCache.markEmailAsProcessed(message.id, {
+      await emailCache.markProcessed(message.id, {
         subject,
         date: new Date(parseInt(message.internalDate)).toISOString(),
         transactionCount: relatedTransactions.length,
         transactionIds
       });
-    });
+    }
     
     // Save results to a JSON file
     if (allTransactions.length > 0) {
