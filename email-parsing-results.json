@@ -1,26 +1,116 @@
 [
   {
-    "orderId": "binance-payment-1744381502000-5b3yu0lb",
+    "orderId": "0",
     "platform": "BINANCE",
     "transactionType": "PAYMENT",
     "symbol": "USDT",
-    "quantity": 768.87,
+    "quantity": 599.7,
     "side": "SELL",
     "type": "PAYMENT",
     "status": "COMPLETED",
-    "time": "2025-04-11T14:25:02.000Z",
-    "updateTime": "2025-04-11T14:25:02.000Z",
+    "time": "2025-04-14T18:49:24.000Z",
+    "updateTime": "2025-04-14T18:49:24.000Z",
     "price": null,
-    "quoteQuantity": 768.87,
+    "quoteQuantity": 599.7,
     "sourceType": "EMAIL",
     "paymentDetails": {
       "currency": "USDT",
       "method": "BINANCE_PAY"
     },
     "metadata": {
-      "messageId": "196269dea5a8cfd0",
-      "subject": "Fwd: [Binance]Payment Transaction Detail - 2025-04-11 14:25:02 (UTC)",
-      "processedAt": "2025-04-12T21:22:03.080Z"
+      "messageId": "19635a28cea4a496",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 18:49:24 (UTC)",
+      "processedAt": "2025-04-14T18:51:08.460Z"
+    }
+  },
+  {
+    "orderId": "0",
+    "platform": "BINANCE",
+    "transactionType": "PAYMENT",
+    "symbol": "USDT",
+    "quantity": 524.26,
+    "side": "SELL",
+    "type": "PAYMENT",
+    "status": "COMPLETED",
+    "time": "2025-04-14T18:44:55.000Z",
+    "updateTime": "2025-04-14T18:44:55.000Z",
+    "price": null,
+    "quoteQuantity": 524.26,
+    "sourceType": "EMAIL",
+    "paymentDetails": {
+      "currency": "USDT",
+      "method": "BINANCE_PAY"
+    },
+    "metadata": {
+      "messageId": "196359e728603509",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 18:44:55 (UTC)",
+      "processedAt": "2025-04-14T18:51:08.462Z"
+    }
+  },
+  {
+    "orderId": "0",
+    "platform": "BINANCE",
+    "transactionType": "PAYMENT",
+    "symbol": "USDT",
+    "quantity": 11181.63,
+    "side": "SELL",
+    "type": "PAYMENT",
+    "status": "COMPLETED",
+    "time": "2025-04-14T16:38:00.000Z",
+    "updateTime": "2025-04-14T16:38:00.000Z",
+    "price": null,
+    "quoteQuantity": 11181.63,
+    "sourceType": "EMAIL",
+    "paymentDetails": {
+      "currency": "USDT",
+      "method": "BINANCE_PAY"
+    },
+    "metadata": {
+      "messageId": "196352a3dc289334",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 16:38:00 (UTC)",
+      "processedAt": "2025-04-14T18:51:08.466Z"
+    }
+  },
+  {
+    "orderId": "0",
+    "platform": "BINANCE",
+    "transactionType": "PAYMENT",
+    "symbol": "USDT",
+    "quantity": 1152.8,
+    "side": "SELL",
+    "type": "PAYMENT",
+    "status": "COMPLETED",
+    "time": "2025-04-14T14:31:24.000Z",
+    "updateTime": "2025-04-14T14:31:24.000Z",
+    "price": null,
+    "quoteQuantity": 1152.8,
+    "sourceType": "EMAIL",
+    "paymentDetails": {
+      "currency": "USDT",
+      "method": "BINANCE_PAY"
+    },
+    "metadata": {
+      "messageId": "19634b655fa8e562",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 14:31:24 (UTC)",
+      "processedAt": "2025-04-14T18:51:08.467Z"
+    }
+  },
+  {
+    "transactionType": "DEPOSIT",
+    "orderId": "DEP1744656668468",
+    "platform": "BINANCE",
+    "status": "COMPLETED",
+    "symbol": "USDT",
+    "quantity": 15996.540834,
+    "price": 1,
+    "side": "BUY",
+    "time": 1744639154000,
+    "updateTime": 1744639154000,
+    "sourceType": "EMAIL",
+    "metadata": {
+      "messageId": "1963498de1b2dac0",
+      "subject": "[Binance] USDT Deposit Confirmed - 2025-04-14 13:59:13(UTC)",
+      "processedAt": "2025-04-14T18:51:08.468Z"
     }
   }
 ]

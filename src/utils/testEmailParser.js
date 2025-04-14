@@ -19,6 +19,9 @@ const dotenv = require('dotenv');
 // Load environment variables
 dotenv.config();
 
+// Colombia timezone (UTC-5)
+const TIMEZONE_OFFSET = -5; // Colombia (UTC-5)
+
 // Main execution - run the tests
 testWithRealEmails()
   .then(() => {
@@ -54,21 +57,21 @@ async function testWithRealEmails() {
       console.log(`Cleared ${removedCount} old emails from cache`);
     }
     
-    // Fetch only current day's Binance emails (like in the main app)
+    // Fetch emails for the current day in Colombia timezone (UTC-5)
     const startOfDay = new Date();
-    startOfDay.setUTCHours(0, 0, 0, 0);
+    // Set to start of day in Colombia timezone
+    startOfDay.setUTCHours(0 - TIMEZONE_OFFSET, 0, 0, 0);
     
     const endOfDay = new Date();
-    endOfDay.setUTCHours(23, 59, 59, 999);
+    // Set to end of day in Colombia timezone
+    endOfDay.setUTCHours(23 - TIMEZONE_OFFSET, 59, 59, 999);
     
-    // Convert to RFC 3339 format for Gmail API
-    const after = startOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
-    const before = endOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    console.log(`Searching for emails between: ${startOfDay.toISOString()} and ${endOfDay.toISOString()}`);
     
-    // Create query to search for Binance emails for today only - match main app behavior
-    const fromQueries = gmailService.binanceEmailAddresses.map(email => `from:${email}`).join(' OR ');
-    const query = `(${fromQueries}) after:${after} before:${before}`;
-    console.log(`\n🔍 Searching for today's Binance emails with query: ${query}`);
+    // Remove the after/before filters that are causing issues with Gmail API
+    // According to Gmail API docs, we need simpler query syntax
+    const query = `from:donotreply@directmail.binance.com OR subject:[Binance]`;
+    console.log(`\n🔍 Searching for Binance emails with query: ${query}`);
     
     // Get message list
     const response = await gmail.users.messages.list({
@@ -78,18 +81,48 @@ async function testWithRealEmails() {
     });
     
     const messages = response.data.messages || [];
-    console.log(`\n📬 Found ${messages.length} Binance emails to process`);
+    console.log(`\n📬 Found ${messages.length} Binance emails in total`);
     
     if (messages.length === 0) {
       console.log('No emails found. Try adjusting the search query or date range.');
       return [];
     }
     
-    // Fetch full message data for all messages
+    // Filter messages to only those from today in Colombia timezone (UTC-5)
+    const todayMessages = [];
+    let skippedDueDateCount = 0;
+    
+    for (const message of messages) {
+      // Get basic message data to check date
+      const messageData = await gmail.users.messages.get({
+        userId: 'me',
+        id: message.id,
+        format: 'minimal'
+      });
+      
+      const emailDate = new Date(parseInt(messageData.data.internalDate));
+      
+      // Check if email is from today in Colombia timezone
+      if (emailDate >= startOfDay && emailDate <= endOfDay) {
+        todayMessages.push(message);
+      } else {
+        skippedDueDateCount++;
+      }
+    }
+    
+    console.log(`\n📬 Filtered to ${todayMessages.length} emails from today (Colombia timezone)`);
+    console.log(`🗓️ Skipped ${skippedDueDateCount} emails from other days`);
+    
+    if (todayMessages.length === 0) {
+      console.log('No emails from today found.');
+      return [];
+    }
+    
+    // Fetch full message data for all messages from today
     const fullMessages = [];
     let skippedCount = 0;
     
-    for (const message of messages) {
+    for (const message of todayMessages) {
       // Check if this email has already been processed
       if (emailCache.isEmailProcessed(message.id)) {
         console.log(`\n📨 Skipping already processed email ID: ${message.id}`);
@@ -166,31 +199,69 @@ async function testWithRealEmails() {
         const sheetId = process.env.GOOGLE_SHEETS_ID;
         console.log(`Using Google Sheet ID: ${sheetId}`);
         
-        // Transform transactions to sheet rows format
-        const rows = allTransactions.map(transaction => [
-          transaction.orderId || '',
-          transaction.platform || 'BINANCE',
-          transaction.transactionType || 'OTHER',
-          '',  // Customer name
-          transaction.title || '',
-          transaction.symbol || '',
-          transaction.side || '',
-          transaction.type || '',
-          transaction.price || 0,
-          transaction.quantity || 0,
-          transaction.quoteQuantity || 0,
-          transaction.status || 'COMPLETED',
-          new Date(transaction.time).toISOString(),
-          new Date().toISOString(),  // Update time
-          transaction.walletAddress || '',
-          '',  // Payment info
-          transaction.sourceType || 'EMAIL'
-        ]);
+        // Define headers - removed Customer, Title, Wallet Address, Payment Info, Price, Quote Quantity
+        const headers = [
+          'Date', 'Order ID', 'Platform', 'Transaction Type',
+          'Symbol', 'Side', 'Type', 'Quantity',
+          'Status', 'Time', 'Update Time', 'Source'
+        ];
         
-        // Append to the sheet
-        const response = await sheets.spreadsheets.values.append({
+        // Get current sheet content to determine where to append
+        const currentContent = await sheets.spreadsheets.values.get({
           spreadsheetId: sheetId,
-          range: 'Transactions!A2',
+          range: 'Transactions!A:L'
+        });
+        
+        const existingRows = currentContent.data.values || [];
+        console.log(`Found ${existingRows.length > 0 ? existingRows.length - 1 : 0} existing rows of data in sheet`);
+        
+        // Find the next available row (rows.length is 0-indexed, but sheet is 1-indexed)
+        const nextRow = Math.max(existingRows.length + 1, 2); // Start at row 2 at minimum (after headers)
+        
+        // If no headers exist or sheet is empty, add them
+        if (existingRows.length === 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: sheetId,
+            range: 'Transactions!A1:L1',
+            valueInputOption: 'USER_ENTERED',
+            resource: { 
+              values: [headers] 
+            },
+          });
+          console.log('Added headers to empty sheet');
+        }
+        
+        // Transform transactions to sheet rows format - removed Customer, Title, Wallet Address, Payment Info, Price, Quote Quantity
+        const rows = allTransactions.map(transaction => {
+          // Get the received date from the message
+          const messageId = transaction.metadata?.messageId;
+          const relatedMessage = fullMessages.find(msg => msg.id === messageId);
+          const emailReceivedDate = relatedMessage ? new Date(parseInt(relatedMessage.internalDate)) : new Date();
+          
+          // Adjust to Colombia timezone (UTC-5)
+          const localDate = new Date(emailReceivedDate);
+          
+          return [
+            localDate.toISOString().split('T')[0], // Date column (YYYY-MM-DD)
+            transaction.orderId || '',
+            transaction.platform || 'BINANCE',
+            transaction.transactionType || 'OTHER',
+            transaction.symbol || '',
+            transaction.side || '',
+            transaction.type || '',
+            transaction.quantity || 0,
+            transaction.status || 'COMPLETED',
+            new Date(transaction.time).toISOString(),
+            new Date().toISOString(),  // Update time
+            transaction.sourceType || 'EMAIL'
+          ];
+        });
+        
+        // Append to the sheet at the next available row
+        console.log(`Appending ${rows.length} transactions at row ${nextRow}`);
+        const response = await sheets.spreadsheets.values.update({
+          spreadsheetId: sheetId,
+          range: `Transactions!A${nextRow}:L${nextRow + rows.length - 1}`,
           valueInputOption: 'USER_ENTERED',
           resource: { values: rows },
         });

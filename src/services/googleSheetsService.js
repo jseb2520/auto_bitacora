@@ -12,6 +12,9 @@ const { logger, createModuleLogger } = require('../utils/logger');
 // Create a module-specific logger
 const moduleLogger = createModuleLogger('googleSheetsService');
 
+// Colombia timezone (UTC-5)
+const TIMEZONE_OFFSET = -5;
+
 /**
  * Google Sheets API service for writing transaction data
  */
@@ -29,16 +32,16 @@ class GoogleSheetsService {
   async initialize() {
     try {
       moduleLogger.info('Initializing Google Sheets service');
-      
+
       // Use the same auth client as Gmail
       this.auth = await authClient.getAuthClient();
-      
+
       // Create Google Sheets API client
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
-      
+
       moduleLogger.info('Google Sheets service initialized successfully');
     } catch (error) {
-      moduleLogger.error('Failed to initialize Google Sheets service', { 
+      moduleLogger.error('Failed to initialize Google Sheets service', {
         error: error.message,
         stack: error.stack
       });
@@ -56,7 +59,7 @@ class GoogleSheetsService {
       const sheetInfo = await this.sheets.spreadsheets.get({
         spreadsheetId: this.sheetId
       });
-      
+
       // Check if Transactions sheet exists
       let transactionsSheetExists = false;
       if (sheetInfo && sheetInfo.data && sheetInfo.data.sheets) {
@@ -64,11 +67,11 @@ class GoogleSheetsService {
           sheet => sheet.properties.title === 'Transactions'
         );
       }
-      
+
       // Create Transactions sheet if it doesn't exist
       if (!transactionsSheetExists) {
         moduleLogger.info('Transactions sheet does not exist. Creating it...');
-        
+
         await this.sheets.spreadsheets.batchUpdate({
           spreadsheetId: this.sheetId,
           resource: {
@@ -79,7 +82,7 @@ class GoogleSheetsService {
                     title: 'Transactions',
                     gridProperties: {
                       rowCount: 2000,
-                      columnCount: 20
+                      columnCount: 12
                     }
                   }
                 }
@@ -87,27 +90,27 @@ class GoogleSheetsService {
             ]
           }
         });
-        
-        // Add header row
+
+        // Add header row with Date as first column
         const headers = [
-          'Order ID', 'Platform', 'Transaction Type', 'Customer', 'Title',
-          'Symbol', 'Side', 'Type', 'Price', 'Quantity', 'Quote Quantity',
-          'Status', 'Time', 'Update Time', 'Wallet Address', 'Payment Info', 'Source'
+          'Date', 'Order ID', 'Platform', 'Transaction Type',
+          'Symbol', 'Side', 'Type', 'Quantity',
+          'Status', 'Time', 'Update Time', 'Source'
         ];
-        
+
         await this.sheets.spreadsheets.values.update({
           spreadsheetId: this.sheetId,
-          range: 'Transactions!A1:Q1',
+          range: 'Transactions!A1:L1',
           valueInputOption: 'USER_ENTERED',
           resource: {
             values: [headers]
           }
         });
-        
+
         moduleLogger.info('Transactions sheet created with headers');
       }
     } catch (error) {
-      moduleLogger.error('Failed to ensure Transactions sheet exists', { 
+      moduleLogger.error('Failed to ensure Transactions sheet exists', {
         error: error.message,
         stack: error.stack,
         sheetId: this.sheetId
@@ -130,85 +133,90 @@ class GoogleSheetsService {
     try {
       moduleLogger.info(`Writing ${transactions.length} transactions to Google Sheets`);
       
-      // Ensure Transactions sheet exists
+      // Ensure Transactions sheet exists with headers
       await this.ensureTransactionsSheetExists();
       
+      // Define headers for reference
+      const headers = [
+        'Date', 'Order ID', 'Platform', 'Transaction Type',
+        'Symbol', 'Side', 'Type', 'Quantity',
+        'Status', 'Time', 'Update Time', 'Source'
+      ];
+      
+      // First, get current content to determine where to append
+      const currentContent = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.sheetId,
+        range: 'Transactions!A:L'
+      });
+      
+      const rows = currentContent.data.values || [];
+      
+      // Find the next available row (rows.length is 0-indexed, but sheet is 1-indexed)
+      const nextRow = Math.max(rows.length + 1, 2); // Start at row 2 at minimum (after headers)
+      
+      moduleLogger.debug(`Appending data starting at row ${nextRow}`);
+      
+      // If no headers exist, add them
+      if (rows.length === 0) {
+        await this.sheets.spreadsheets.values.update({
+          spreadsheetId: this.sheetId,
+          range: 'Transactions!A1:L1',
+          valueInputOption: 'USER_ENTERED',
+          resource: {
+            values: [headers]
+          }
+        });
+        moduleLogger.debug('Headers written to the sheet');
+      }
+      
       // Transform transactions to sheet rows format
-      const rows = transactions.map(transaction => {
-        const customerConfig = require('../config/customers');
-        let customerName = 'Unknown';
+      const dataRows = transactions.map(transaction => {
+        // Get the email received date from metadata if available
+        let emailDate = transaction.time;
         
-        // Try to identify customer
-        if (transaction.customerId) {
-          const customer = customerConfig.getCustomerById(transaction.customerId);
-          if (customer) {
-            customerName = customer.name;
-          }
-        } else if (transaction.walletAddress) {
-          const customer = customerConfig.getCustomerByWalletAddress(transaction.walletAddress);
-          if (customer) {
-            customerName = customer.name;
-          }
+        // If this is from an email source, try to get the actual received date
+        if (transaction.sourceType === 'EMAIL' && transaction.metadata && transaction.metadata.processedAt) {
+          emailDate = new Date(transaction.metadata.processedAt);
         }
         
-        // Get payment details if available
-        let paymentInfo = '';
-        if (transaction.paymentDetails) {
-          const details = transaction.paymentDetails;
-          paymentInfo = [
-            details.method,
-            details.accountId,
-            details.email,
-            details.phone,
-            details.reference
-          ].filter(Boolean).join(', ');
-        }
+        // Adjust date to Colombia timezone (UTC-5)
+        const localDate = new Date(emailDate);
         
         return [
+          localDate.toISOString().split('T')[0], // Date column (YYYY-MM-DD)
           transaction.orderId,
           transaction.platform,
           transaction.transactionType || 'OTHER',
-          customerName,
-          transaction.title || '',
           transaction.symbol,
           transaction.side,
           transaction.type,
-          transaction.price,
           transaction.quantity,
-          transaction.quoteQuantity,
           transaction.status,
           new Date(transaction.time).toISOString(),
           new Date(transaction.updateTime || Date.now()).toISOString(),
-          transaction.walletAddress || '',
-          paymentInfo,
           transaction.sourceType || 'API'
         ];
       });
       
-      moduleLogger.debug('Transactions transformed to sheets format', {
-        rowCount: rows.length,
-        sampleRow: rows.length > 0 ? rows[0] : 'No rows'
-      });
-      
       // Prepare the values for insertion
       const resource = {
-        values: rows,
+        values: dataRows,
       };
       
-      // Append to the sheet with a specific range
-      moduleLogger.debug(`Appending rows to sheet: ${this.sheetId}, range: Transactions!A2`);
+      // Append to the sheet starting at the determined row
+      moduleLogger.debug(`Writing ${dataRows.length} rows to Google Sheets at row ${nextRow}`);
       
-      const response = await this.sheets.spreadsheets.values.append({
+      const response = await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.sheetId,
-        range: 'Transactions!A2',
+        range: `Transactions!A${nextRow}:L${nextRow + dataRows.length - 1}`,
         valueInputOption: 'USER_ENTERED',
         resource,
       });
       
-      moduleLogger.info('Successfully wrote transactions to Google Sheets', {
-        updatedRows: response.data.updates.updatedRows,
-        updatedColumns: response.data.updates.updatedColumns,
-        updatedCells: response.data.updates.updatedCells,
+      moduleLogger.info('Successfully appended transactions to Google Sheets', {
+        updatedRows: dataRows.length,
+        startRow: nextRow,
+        endRow: nextRow + dataRows.length - 1,
         sheetId: this.sheetId
       });
       

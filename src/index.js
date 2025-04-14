@@ -8,9 +8,9 @@ const helmet = require('helmet');
 const { connectDatabase } = require('./utils/database');
 const config = require('./config');
 const routes = require('./routes');
-const scheduler = require('./utils/scheduler');
-const monitoring = require('./utils/monitoring');
+const { initializeScheduler } = require('./scheduler'); // Import our new scheduler
 const middleware = require('./middleware');
+const { logger } = require('./utils/logger');
 
 // Initialize Express app
 const app = express();
@@ -30,15 +30,13 @@ app.use('/api', routes);
 
 // 404 handler
 app.use((req, res) => {
-  monitoring.trackRequest('notFound');
+  logger.info('Resource not found', { path: req.path });
   res.status(404).json({ error: 'Resource not found' });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  
-  monitoring.trackRequest('error');
+  logger.error('Unhandled error:', { error: err.message, stack: err.stack });
   
   res.status(500).json({ 
     error: 'Internal server error',
@@ -48,7 +46,7 @@ app.use((err, req, res, next) => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
+  logger.error('Uncaught exception:', { error: err.message, stack: err.stack });
   
   // Try to gracefully shut down
   shutdown(1);
@@ -56,28 +54,25 @@ process.on('uncaughtException', (err) => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('Unhandled Rejection:', { reason: reason?.message || reason, stack: reason?.stack });
 });
 
 // Graceful shutdown function
 const shutdown = (code = 0) => {
-  console.log('Shutting down gracefully...');
+  logger.info('Shutting down gracefully...');
   
-  // Stop all scheduled tasks
-  scheduler.stopAllTasks();
+  // Force close after timeout
+  setTimeout(() => {
+    logger.error('Forcing shutdown after timeout');
+    process.exit(code);
+  }, 10000); // 10 seconds
   
-  // Close server (if defined)
+  // Close server if it exists
   if (server) {
     server.close(() => {
-      console.log('Server closed');
+      logger.info('Server closed');
       process.exit(code);
     });
-    
-    // Force close after timeout
-    setTimeout(() => {
-      console.error('Forcing shutdown after timeout');
-      process.exit(code);
-    }, 10000); // 10 seconds
   } else {
     process.exit(code);
   }
@@ -92,11 +87,12 @@ const startServer = async () => {
     // Start the Express server
     const PORT = config.server.port;
     const server = app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT} in ${config.server.env} mode`);
+      logger.info(`Server running on port ${PORT} in ${config.server.env} mode`);
     });
     
-    // Initialize scheduled tasks
-    scheduler.initTasks();
+    // Initialize our scheduler for email processing
+    initializeScheduler();
+    logger.info('Scheduler initialized for email processing at 7PM Colombia time');
     
     // Handle graceful shutdown
     process.on('SIGINT', () => shutdown(0));
@@ -104,7 +100,7 @@ const startServer = async () => {
     
     return server;
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server:', { error: error.message, stack: error.stack });
     process.exit(1);
   }
 };

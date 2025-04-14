@@ -1,35 +1,57 @@
 {
   "processedEmails": {
-    "196269dea5a8cfd0": {
-      "processedAt": "2025-04-12T21:22:03.082Z",
-      "subject": "Fwd: [Binance]Payment Transaction Detail - 2025-04-11 14:25:02 (UTC)",
-      "date": "2025-04-11T20:49:53.000Z",
+    "19635a28cea4a496": {
+      "processedAt": "2025-04-14T18:51:08.468Z",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 18:49:24 (UTC)",
+      "date": "2025-04-14T18:49:26.000Z",
       "transactionCount": 1,
       "transactionIds": [
-        "binance-payment-1744381502000-5b3yu0lb"
+        "0"
       ]
     },
-    "1961cb2d5350988c": {
-      "processedAt": "2025-04-12T21:22:03.083Z",
-      "subject": "Create New API Key From 181.234.137.169 - 2025-04-09 22:36:40(UTC)",
-      "date": "2025-04-09T22:36:43.000Z",
+    "196359e728603509": {
+      "processedAt": "2025-04-14T18:51:08.469Z",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 18:44:55 (UTC)",
+      "date": "2025-04-14T18:44:56.000Z",
+      "transactionCount": 1,
+      "transactionIds": [
+        "0"
+      ]
+    },
+    "196359c6ee9ff2f5": {
+      "processedAt": "2025-04-14T18:51:08.470Z",
+      "subject": "[Binance] Login Attempted from New IP address  185.183.33.219 - 2025-04-14 18:42:44(UTC)",
+      "date": "2025-04-14T18:42:45.000Z",
       "transactionCount": 0,
       "transactionIds": []
     },
-    "1961ba1d4eea4dfe": {
-      "processedAt": "2025-04-12T21:22:03.084Z",
-      "subject": "[Binance] Login Attempted from New IP address  181.234.137.169 - 2025-04-09 17:38:28(UTC)",
-      "date": "2025-04-09T17:38:31.000Z",
-      "transactionCount": 0,
-      "transactionIds": []
+    "196352a3dc289334": {
+      "processedAt": "2025-04-14T18:51:08.471Z",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 16:38:00 (UTC)",
+      "date": "2025-04-14T16:38:01.000Z",
+      "transactionCount": 1,
+      "transactionIds": [
+        "0"
+      ]
     },
-    "195a0e2552c4ead6": {
-      "processedAt": "2025-04-12T21:22:03.084Z",
-      "subject": "[Binance] Login Attempted from New IP address  191.106.169.86 - 2025-03-16 21:35:38(UTC)",
-      "date": "2025-03-16T21:35:42.000Z",
-      "transactionCount": 0,
-      "transactionIds": []
+    "19634b655fa8e562": {
+      "processedAt": "2025-04-14T18:51:08.471Z",
+      "subject": "[Binance]Payment Transaction Detail - 2025-04-14 14:31:24 (UTC)",
+      "date": "2025-04-14T14:31:25.000Z",
+      "transactionCount": 1,
+      "transactionIds": [
+        "0"
+      ]
+    },
+    "1963498de1b2dac0": {
+      "processedAt": "2025-04-14T18:51:08.471Z",
+      "subject": "[Binance] USDT Deposit Confirmed - 2025-04-14 13:59:13(UTC)",
+      "date": "2025-04-14T13:59:14.000Z",
+      "transactionCount": 1,
+      "transactionIds": [
+        "DEP1744656668468"
+      ]
     }
   },
-  "lastUpdated": "2025-04-12T21:22:03.084Z"
+  "lastUpdated": "2025-04-14T18:51:08.471Z"
 }

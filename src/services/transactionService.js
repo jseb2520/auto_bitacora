@@ -15,6 +15,9 @@ const authClient = require('../utils/authClient');
 // Create a module-specific logger
 const moduleLogger = createModuleLogger('transactionService');
 
+// Colombia timezone (UTC-5)
+const TIMEZONE_OFFSET = -5;
+
 /**
  * Transaction service to manage fetching, storing, and syncing transactions
  */
@@ -67,21 +70,17 @@ class TransactionService {
       // Initialize Gmail service
       await gmailService.initialize();
       
-      // Get today's date range
+      // Get today's date range in Colombia timezone (UTC-5)
       const startOfDay = new Date();
-      startOfDay.setUTCHours(0, 0, 0, 0);
+      startOfDay.setUTCHours(0 - TIMEZONE_OFFSET, 0, 0, 0);
       
       const endOfDay = new Date();
-      endOfDay.setUTCHours(23, 59, 59, 999);
+      endOfDay.setUTCHours(23 - TIMEZONE_OFFSET, 59, 59, 999);
       
-      // Convert to RFC 3339 format for Gmail API
-      const after = startOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
-      const before = endOfDay.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      moduleLogger.info(`Fetching Binance emails for Colombia timezone day (${startOfDay.toISOString()} to ${endOfDay.toISOString()})`);
       
-      moduleLogger.info(`Fetching Binance emails from ${after} to ${before}`);
-      
-      // Create search query for Binance emails
-      const query = `from:(${gmailService.binanceEmailAddresses.join(' OR ')}) after:${after} before:${before}`;
+      // Use simplified query format following Gmail API docs
+      const query = `from:donotreply@directmail.binance.com OR subject:[Binance]`;
       moduleLogger.debug(`Using Gmail query: ${query}`);
       
       // Fetch messages
@@ -91,8 +90,42 @@ class TransactionService {
         maxResults: 50
       });
       
-      const messageList = messages.data.messages || [];
-      moduleLogger.info(`Found ${messageList.length} Binance emails for today`);
+      const allMessageList = messages.data.messages || [];
+      moduleLogger.info(`Found ${allMessageList.length} Binance emails in total`);
+      
+      if (allMessageList.length === 0) {
+        moduleLogger.info('No Binance emails found');
+        return [];
+      }
+      
+      // Filter messages to only include those from today (in Colombia timezone)
+      const messageList = [];
+      let skippedCount = 0;
+      
+      for (const message of allMessageList) {
+        try {
+          // Fetch minimal message data to check date
+          const messageData = await gmailService.gmail.users.messages.get({
+            userId: 'me',
+            id: message.id,
+            format: 'minimal'
+          });
+          
+          const emailDate = new Date(parseInt(messageData.data.internalDate));
+          
+          // Check if email is from today in Colombia timezone
+          if (emailDate >= startOfDay && emailDate <= endOfDay) {
+            messageList.push(message);
+          } else {
+            skippedCount++;
+          }
+        } catch (err) {
+          moduleLogger.error(`Error checking date for message ${message.id}:`, err);
+        }
+      }
+      
+      moduleLogger.info(`Filtered to ${messageList.length} emails from today (Colombia timezone)`);
+      moduleLogger.debug(`Skipped ${skippedCount} emails from other days`);
       
       if (messageList.length === 0) {
         moduleLogger.info('No Binance emails found for today');
