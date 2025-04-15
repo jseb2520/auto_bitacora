@@ -61,13 +61,19 @@ async function testWithRealEmails() {
     }
     
     // Fetch emails for the current day in Colombia timezone (UTC-5)
-    const startOfDay = new Date();
-    // Set to start of day in Colombia timezone
-    startOfDay.setUTCHours(0 - TIMEZONE_OFFSET, 0, 0, 0);
+    const now = new Date();
     
-    const endOfDay = new Date();
-    // Set to end of day in Colombia timezone
-    endOfDay.setUTCHours(23 - TIMEZONE_OFFSET, 59, 59, 999);
+    // Create the start of day in Colombia timezone
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0); // Set to midnight local time
+    // Adjust for UTC time (add the offset since we're behind UTC)
+    startOfDay.setTime(startOfDay.getTime() + (TIMEZONE_OFFSET * 60 * 60 * 1000));
+    
+    // Create the end of day in Colombia timezone
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999); // Set to end of day local time
+    // Adjust for UTC time (add the offset since we're behind UTC)
+    endOfDay.setTime(endOfDay.getTime() + (TIMEZONE_OFFSET * 60 * 60 * 1000));
     
     console.log(`Searching for emails between: ${startOfDay.toISOString()} and ${endOfDay.toISOString()}`);
     
