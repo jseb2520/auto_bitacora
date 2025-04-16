@@ -102,5 +102,5 @@ emailProcessingRecordSchema.statics.countByStatus = function() {
 };
 
 // Create and export the model
-const EmailProcessingRecord = mongoose.model('EmailProcessingRecord', emailProcessingRecordSchema);
+const EmailProcessingRecord = mongoose.model('EmailProcessingRecords', emailProcessingRecordSchema);
 module.exports = EmailProcessingRecord; 

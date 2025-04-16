@@ -20,10 +20,15 @@ function initializeScheduler() {
   schedulerLogger.info('Initializing scheduled tasks');
   
   try {
+    // Log startup status with more details
+    schedulerLogger.info(`Scheduler starting in environment: ${process.env.NODE_ENV || 'development'}`);
+    schedulerLogger.info(`Current server time: ${new Date().toISOString()}`);
+    schedulerLogger.info('Target execution time: 7:00 PM Colombia time (00:00 UTC)');
+    
     // Schedule email processing at 7:00 PM Colombia time (UTC-5), which is 00:00 UTC
     // Cron syntax: minute hour day-of-month month day-of-week
-    cron.schedule('0 0 * * *', async () => {
-      schedulerLogger.info('Running scheduled email processing task');
+    const job = cron.schedule('0 0 * * *', async () => {
+      schedulerLogger.info(`Running scheduled email processing task at ${new Date().toISOString()}`);
       
       try {
         // Process today's Binance emails
@@ -43,6 +48,17 @@ function initializeScheduler() {
       scheduled: true,
       timezone: "America/Bogota" // Colombia timezone
     });
+    
+    // Add confirmation that the job is scheduled
+    schedulerLogger.info(`Cron job scheduled successfully: ${job.getStatus()}`);
+    
+    // Log next scheduled run time
+    const nextDate = new Date();
+    if (nextDate.getUTCHours() >= 0) {
+      nextDate.setUTCDate(nextDate.getUTCDate() + 1);  // Next day if already past midnight UTC
+    }
+    nextDate.setUTCHours(0, 0, 0, 0);  // Set to midnight UTC (7PM Colombia)
+    schedulerLogger.info(`Next scheduled run: ${nextDate.toISOString()}`);
     
     schedulerLogger.info('Scheduled tasks initialized successfully');
   } catch (error) {

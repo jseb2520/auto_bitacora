@@ -50,5 +50,64 @@
     "transactionIds": [
       "DEP1744675753656"
     ]
+  },
+  "1963af3baf3a7bdb": {
+    "processedAt": "2025-04-15T20:38:21.986Z",
+    "subject": "[Binance]Payment Transaction Detail - 2025-04-15 19:36:11 (UTC)",
+    "date": "2025-04-15T19:36:12.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "0"
+    ]
+  },
+  "1963ade0c0a75614": {
+    "processedAt": "2025-04-15T20:38:21.987Z",
+    "subject": "[Binance]Payment Transaction Detail - 2025-04-15 19:12:30 (UTC)",
+    "date": "2025-04-15T19:12:31.000Z",
+    "transactionCount": 0,
+    "transactionIds": []
+  },
+  "1963a50c63eecb36": {
+    "processedAt": "2025-04-15T20:38:21.987Z",
+    "subject": "[Binance]Payment Transaction Detail - 2025-04-15 16:38:11 (UTC)",
+    "date": "2025-04-15T16:38:12.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "0"
+    ]
+  },
+  "1963f04d9ff9f18d": {
+    "processedAt": "2025-04-16T16:57:48.934Z",
+    "subject": "[Binance]Payment Transaction Detail - 2025-04-16 14:33:21 (UTC)",
+    "date": "2025-04-16T14:33:22.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "0"
+    ]
+  },
+  "1963f02f052f0d65": {
+    "processedAt": "2025-04-16T16:57:48.936Z",
+    "subject": "[Binance] New Device or IP Login Alert - 2025-04-16 14:31:16(UTC)",
+    "date": "2025-04-16T14:31:18.000Z",
+    "transactionCount": 0,
+    "transactionIds": []
+  },
+  "1963ee7cee0ff11f": {
+    "processedAt": "2025-04-16T16:57:48.936Z",
+    "subject": "[Binance] USDT Deposit Confirmed - 2025-04-16 14:01:37(UTC)",
+    "date": "2025-04-16T14:01:38.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "DEP1744822668930"
+    ]
+  },
+  "1963c1f8d37c6d13": {
+    "processedAt": "2025-04-16T16:57:48.937Z",
+    "subject": "[Binance] USDT Withdrawal Successful - 2025-04-16 01:03:39 (UTC)",
+    "date": "2025-04-16T01:03:41.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "WD1744822668933"
+    ]
   }
 }

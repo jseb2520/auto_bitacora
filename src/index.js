@@ -27,6 +27,9 @@ app.use(express.urlencoded({ extended: true }));
 // Apply global error logging middleware
 app.use(middleware.errorLogger);
 
+// Apply health check middleware
+app.use(middleware.healthCheck);
+
 // API Routes
 app.use('/api', routes);
 
@@ -91,7 +94,7 @@ const startServer = async () => {
     logger.info('EmailCache initialized for production use with database');
     
     // Start the Express server
-    const PORT = config.server.port;
+    const PORT = process.env.PORT || config.server.port;
     const server = app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT} in ${config.server.env} mode`);
     });
@@ -99,6 +102,11 @@ const startServer = async () => {
     // Initialize our scheduler for email processing
     initializeScheduler();
     logger.info('Scheduler initialized for email processing at 7PM Colombia time');
+    
+    // Keep-alive mechanism to prevent Railway from shutting down the app
+    setInterval(() => {
+      logger.debug('Keep-alive ping to prevent container shutdown');
+    }, 5 * 60 * 1000); // Ping every 5 minutes
     
     // Handle graceful shutdown
     process.on('SIGINT', () => shutdown(0));

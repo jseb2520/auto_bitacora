@@ -7,6 +7,20 @@ const { apiKeyAuth, binanceWebhookAuth, revolutWebhookAuth, krakenWebhookAuth } 
 const { rateLimiter } = require('./rateLimit');
 const { requestLogger, errorLogger } = require('./logging');
 
+// Health check middleware for Railway
+const healthCheck = (req, res, next) => {
+  if (req.path === '/health') {
+    return res.status(200).json({
+      status: 'ok',
+      time: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      env: process.env.NODE_ENV || 'development'
+    });
+  }
+  next();
+};
+
 module.exports = {
   // Authentication middleware
   apiKeyAuth,
@@ -19,5 +33,6 @@ module.exports = {
   
   // Logging middleware
   requestLogger,
-  errorLogger
+  errorLogger,
+  healthCheck
 }; 
