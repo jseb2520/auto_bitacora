@@ -5,10 +5,10 @@
 
 const express = require('express');
 const helmet = require('helmet');
-const { connectDatabase } = require('./utils/database');
+const { connectDatabase, getConnectionStatus } = require('./utils/database');
 const config = require('./config');
 const routes = require('./routes');
-const { initializeScheduler } = require('./scheduler'); // Import our new scheduler
+const { initializeScheduler, getSchedulerStatus } = require('./scheduler');
 const middleware = require('./middleware');
 const { logger } = require('./utils/logger');
 const { getInstance } = require('./utils/emailCache');
@@ -29,6 +29,74 @@ app.use(middleware.errorLogger);
 
 // Apply health check middleware
 app.use(middleware.healthCheck);
+
+// Root route to display server status
+app.get('/', (req, res) => {
+  const uptimeSeconds = process.uptime();
+  const uptimeMinutes = Math.floor(uptimeSeconds / 60);
+  const uptimeHours = Math.floor(uptimeMinutes / 60);
+  const memoryUsage = process.memoryUsage();
+  const dbStatus = getConnectionStatus();
+  const schedulerStatus = getSchedulerStatus();
+
+  const dbStatusMap = {
+    0: 'Disconnected',
+    1: 'Connected',
+    2: 'Connecting',
+    3: 'Disconnecting'
+  };
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Server Status</title>
+      <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h1 { color: #333; }
+        table { border-collapse: collapse; width: 100%; max-width: 600px; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .status-ok { color: green; font-weight: bold; }
+        .status-warn { color: orange; font-weight: bold; }
+        .status-error { color: red; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <h1>Server Status</h1>
+      
+      <h2>Health</h2>
+      <table>
+        <tr><th>Component</th><th>Status</th></tr>
+        <tr>
+          <td>Database Connection</td>
+          <td class="${dbStatus === 1 ? 'status-ok' : 'status-error'}">${dbStatusMap[dbStatus] || 'Unknown'}</td>
+        </tr>
+        <tr>
+          <td>Scheduler (Email Processing)</td>
+          <td class="${schedulerStatus === 'Running' ? 'status-ok' : 'status-warn'}">${schedulerStatus}</td>
+        </tr>
+      </table>
+
+      <h2>Metrics</h2>
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Environment</td><td>${config.server.env}</td></tr>
+        <tr><td>Uptime</td><td>${uptimeHours}h ${uptimeMinutes % 60}m ${Math.floor(uptimeSeconds % 60)}s</td></tr>
+        <tr><td>Memory Usage (RSS)</td><td>${(memoryUsage.rss / 1024 / 1024).toFixed(2)} MB</td></tr>
+        <tr><td>Memory Usage (Heap Total)</td><td>${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB</td></tr>
+        <tr><td>Memory Usage (Heap Used)</td><td>${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB</td></tr>
+        <tr><td>Node Version</td><td>${process.version}</td></tr>
+        <tr><td>Platform</td><td>${process.platform}</td></tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  res.send(htmlContent);
+});
 
 // API Routes
 app.use('/api', routes);

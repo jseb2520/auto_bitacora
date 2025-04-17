@@ -13,6 +13,8 @@ const transactionService = require('./services/transactionService');
 // Create logger for scheduler
 const schedulerLogger = logger.child({ module: 'scheduler' });
 
+let scheduledJob = null; // Keep a reference to the job
+
 /**
  * Initializes the scheduler and sets up cron jobs
  */
@@ -51,6 +53,8 @@ function initializeScheduler() {
       true, // start immediately
       'America/Bogota' // Colombia timezone
     );
+    
+    scheduledJob = job; // Store the job reference
     
     // Add confirmation that the job is scheduled
     schedulerLogger.info(`Cron job scheduled successfully: ${job.running ? 'Running' : 'Not running'}`);
@@ -93,6 +97,15 @@ function initializeScheduler() {
   }
 }
 
+// Function to get the scheduler status
+const getSchedulerStatus = () => {
+  if (!scheduledJob) {
+    return 'Not Initialized';
+  }
+  return scheduledJob.running ? 'Running' : 'Stopped';
+};
+
 module.exports = {
-  initializeScheduler
+  initializeScheduler,
+  getSchedulerStatus // Export the status function
 }; 

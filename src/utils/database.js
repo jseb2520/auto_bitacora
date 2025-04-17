@@ -39,4 +39,12 @@ const connectDatabase = async () => {
   }
 };
 
-module.exports = { connectDatabase }; 
+// Function to get the current connection status
+const getConnectionStatus = () => {
+  return mongoose.connection.readyState;
+};
+
+module.exports = {
+  connectDatabase,
+  getConnectionStatus // Export the status function
+}; 
