@@ -481,6 +481,16 @@ class GmailService {
       } else if (/Payment Transaction Detail/i.test(normalizedSubject)) {
         transactionType = 'PAYMENT';
         side = 'SELL'; // Payments are typically outgoing (sell)
+      } else if (/Payment Receive Successful/i.test(normalizedSubject) || /\[Binance\]\s*Payment Receive Successful/i.test(normalizedSubject)) {
+        transactionType = 'PAYMENT_RECEIVE';
+        side = 'BUY'; // Payment receives are incoming (buy)
+        moduleLogger.debug('Matched Payment Receive Successful pattern in subject');
+      } else if (/received an incoming transfer/i.test(normalizedBody)) {
+        transactionType = 'PAYMENT_RECEIVE';
+        side = 'BUY'; // Incoming transfers are also buys
+      } else if (/You received an incoming transfer/i.test(normalizedSubject)) {
+        transactionType = 'PAYMENT_RECEIVE';
+        side = 'BUY'; // Incoming transfers from subject line
       } else {
         // Try more generic pattern matching for less common formats
         if (subjectMatch) {
@@ -495,6 +505,9 @@ class GmailService {
           } else if (transactionDesc.includes('payment')) {
             transactionType = 'PAYMENT';
             side = 'SELL';
+          } else if (transactionDesc.includes('payment receive')) {
+            transactionType = 'PAYMENT_RECEIVE';
+            side = 'BUY';
           } else if (transactionDesc.includes('order') || transactionDesc.includes('trade')) {
             transactionType = 'TRADE';
             side = /sold/i.test(normalizedBody) ? 'SELL' : 'BUY';
@@ -516,6 +529,8 @@ class GmailService {
           return this.parseTradeEmail(normalizedBody, emailDate, side);
         case 'PAYMENT':
           return this.parsePaymentEmail(normalizedBody, normalizedSubject, emailDate);
+        case 'PAYMENT_RECEIVE':
+          return this.parsePaymentReceiveEmail(normalizedBody, normalizedSubject, emailDate);
         default:
           // If we couldn't determine the type from the subject, try based on body content
           if (normalizedBody.includes('deposit') && normalizedBody.includes('completed')) {
@@ -524,6 +539,8 @@ class GmailService {
             return this.parseWithdrawalEmail(normalizedBody, emailDate);
           } else if (normalizedBody.includes('payment') && normalizedBody.includes('transaction')) {
             return this.parsePaymentEmail(normalizedBody, normalizedSubject, emailDate);
+          } else if (normalizedBody.includes('payment receive') || (normalizedBody.includes('received') && normalizedBody.includes('transfer')) || normalizedBody.includes('incoming transfer')) {
+            return this.parsePaymentReceiveEmail(normalizedBody, normalizedSubject, emailDate);
           }
 
           moduleLogger.debug('Could not determine transaction type', { subject: normalizedSubject });
@@ -955,6 +972,189 @@ class GmailService {
       }];
     } catch (error) {
       moduleLogger.error('Error parsing payment email', {
+        error: error.message,
+        stack: error.stack
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Parse payment receive email content
+   * @param {string} body - Email body text
+   * @param {string} subject - Email subject
+   * @param {Date} emailDate - Email date
+   * @returns {Array} Array containing a payment receive transaction object
+   */
+  parsePaymentReceiveEmail(body, subject, emailDate) {
+    try {
+      moduleLogger.debug('Parsing payment receive email', { subject });
+      
+      // Add debug logging to see the email body content
+      moduleLogger.debug('Email body content preview:', { 
+        bodyPreview: body.substring(0, 200).replace(/\n/g, '\\n') 
+      });
+
+      // Handle forwarded emails by normalizing the subject
+      if (subject.toLowerCase().startsWith('fwd:') || subject.toLowerCase().startsWith('fw:')) {
+        subject = subject.replace(/^(fwd:|fw:)\s*/i, '').trim();
+      }
+
+      // Extract the title from the subject
+      const titleRegex = /\[Binance\](.*?)(?:\s*-\s*|$)/;
+      const titleMatch = subject.match(titleRegex);
+      const title = titleMatch ? titleMatch[1].trim() : 'Payment Receive Detail';
+
+      // Check if this is a payment receive email
+      // Expanded to also check for "incoming transfer" emails
+      if (!title.includes('Payment Receive Detail') && 
+          !title.includes('Payment Receive Successful') && 
+          !title.includes('You received an incoming transfer') &&
+          !(/You received an incoming transfer/i.test(body)) &&
+          !(/received an incoming transfer/i.test(body))) {
+        moduleLogger.debug('Not a payment receive email', { subject, title });
+        return [];
+      }
+
+      // Parse timestamp from subject or use email timestamp as fallback
+      let timestamp;
+      const timestampRegex = /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
+      const timestampMatch = subject.match(timestampRegex);
+
+      if (timestampMatch) {
+        timestamp = new Date(timestampMatch[1] + 'Z'); // Assuming UTC
+      } else {
+        // Fallback to email date
+        timestamp = emailDate;
+      }
+      
+      // Check for the new format with Time: field in a table structure
+      const timeRowRegex = /Time:\s*([\d-]+\s+[\d:]+\([A-Z]+\))/i;
+      const timeRowMatch = body.match(timeRowRegex);
+      if (timeRowMatch) {
+        const timeStr = timeRowMatch[1];
+        try {
+          // Try to parse the UTC timestamp
+          timestamp = new Date(timeStr);
+          moduleLogger.debug(`Found timestamp in email body: ${timeStr}`);
+        } catch (e) {
+          moduleLogger.debug(`Could not parse timestamp from body: ${timeStr}`);
+        }
+      }
+
+      // Extract amount and currency - try multiple patterns in sequence
+      let amountMatch = null;
+
+      // Array of patterns to try - specifically targeting the table-style format first
+      const patterns = [
+        // Table row format with "Amount: 1000 USDT" (no decimal)
+        /Amount:\s*(\d+)\s+([A-Z]{2,10})/i,
+        
+        // Table row format with "Amount: 1,000 USDT" (with commas)
+        /Amount:\s*([\d,]+)\s+([A-Z]{2,10})/i,
+        
+        // Table row format with "Amount: 1000.00 USDT" (with decimal)
+        /Amount:\s*([\d,]+\.\d+)\s+([A-Z]{2,10})/i,
+        
+        // Standard amount format with label
+        /Amount:[\s\n]*([0-9,]+\.\d+)\s*([A-Z]+)/i,
+
+        // Multi-line format with Amount: label
+        /Amount:\s*[\r\n]+([0-9,]+\.\d+)\s*([A-Z]+)/i,
+
+        // Format with time and amount on separate lines
+        /Time:[\s\n]*.*?[\s\n]+([0-9,]+\.\d+)\s*([A-Z]{3,5})/is,
+
+        // "for X.XX USDT" format
+        /for\s+([0-9,]+\.\d+)\s*([A-Z]{3,5})/i,
+
+        // "of X.XX USDT" format (common in deposit emails)
+        /of\s+([0-9,]+\.\d+)\s*([A-Z]{3,5})/i,
+
+        // Has been sent/paid format
+        /([0-9,]+\.\d+)\s*([A-Z]{3,5})\s*(?:has been sent|paid)/i,
+
+        // Most general pattern - any number followed by currency code
+        /([0-9,]+\.\d+)\s*([A-Z]{3,5})/i,
+        
+        // Last resort - try to find any number followed by USDT
+        /(\d+)\s+([A-Z]{2,10})/i
+      ];
+
+      // Try each pattern until we find a match
+      for (const pattern of patterns) {
+        amountMatch = body.match(pattern);
+        if (amountMatch) {
+          moduleLogger.debug(`Found amount with pattern: ${pattern}`, {
+            match: amountMatch[0]
+          });
+          break;
+        }
+      }
+
+      if (!amountMatch) {
+        moduleLogger.warn('Could not parse amount and currency from payment receive email', {
+          bodyPreview: body.substring(0, 200).replace(/\n/g, '\\n')
+        });
+        return [];
+      }
+
+      const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+      const currency = amountMatch[2];
+
+      // Extract sender information (from the new format)
+      let sender = null;
+      const fromMatch = body.match(/From:\s*([^"\n\r]+)/i);
+      if (fromMatch) {
+        sender = fromMatch[1].trim();
+        moduleLogger.debug(`Found sender: ${sender}`);
+      }
+
+      // Extract or generate transaction ID
+      const txIdRegex = /(?:Order|Transaction)\s*(?:No|ID|Number)?\.?:\s*([A-Za-z0-9-]+)/i;
+      const txIdMatch = body.match(txIdRegex);
+
+      // Generate a unique ID if no transaction ID found
+      const orderId = txIdMatch ? txIdMatch[1] :
+        `binance-payment-receive-${timestamp.getTime()}-${Math.random().toString(36).substring(2, 10)}`;
+
+      moduleLogger.info('Successfully parsed payment receive email', {
+        title,
+        timestamp: timestamp.toISOString(),
+        amount,
+        currency,
+        orderId,
+        sender
+      });
+
+      const transaction = {
+        orderId,
+        platform: 'BINANCE',
+        transactionType: 'PAYMENT_RECEIVE',
+        symbol: currency,
+        quantity: amount,
+        side: 'BUY',  // Payment receives are incoming
+        type: 'PAYMENT_RECEIVE',
+        status: 'COMPLETED',
+        time: timestamp,
+        updateTime: timestamp,
+        price: null,
+        quoteQuantity: amount,
+        sourceType: 'GMAIL',
+        paymentDetails: {
+          currency: currency,
+          method: 'BINANCE_PAY'
+        }
+      };
+      
+      // Add sender info if available
+      if (sender) {
+        transaction.paymentDetails.sender = sender;
+      }
+
+      return [transaction];
+    } catch (error) {
+      moduleLogger.error('Error parsing payment receive email', {
         error: error.message,
         stack: error.stack
       });

@@ -12,7 +12,6 @@ const gmailService = require('../services/gmailService');
 const googleSheetsService = require('../services/googleSheetsService');
 const transactionService = require('../services/transactionService');
 const authClient = require('../utils/authClient');
-const EmailProcessingRecord = require('../models/emailProcessingRecord');
 const emailCacheModule = require('../utils/emailCache');
 // Create a testing-specific instance with file cache forced
 const emailCache = emailCacheModule.createInstance({ forceFileCache: true });
@@ -28,10 +27,10 @@ const TIMEZONE_OFFSET = -5; // Colombia (UTC-5)
 // Main execution - run the tests
 testWithRealEmails()
   .then(() => {
-    console.log('Test completed successfully');
+    logger.info('Test completed successfully');
   })
   .catch(error => {
-    console.error('Test failed:', error);
+    logger.error('Test failed:', error);
     process.exit(1);
   });
 
@@ -40,7 +39,7 @@ testWithRealEmails()
  */
 async function testWithRealEmails() {
   try {
-    console.log('\n📧 Testing email retrieval and parsing with real emails from Gmail...');
+    logger.info('\n📧 Testing email retrieval and parsing with real emails from Gmail...');
     
     // Initialize authentication for both services
     await authClient.initialize();
@@ -57,7 +56,7 @@ async function testWithRealEmails() {
     // Clear old emails from cache (older than 30 days)
     const removedCount = await emailCache.clearOldEmails(30);
     if (removedCount > 0) {
-      console.log(`Cleared ${removedCount} old emails from cache`);
+      logger.info(`Cleared ${removedCount} old emails from cache`);
     }
     
     // Fetch emails for the current day in Colombia timezone (UTC-5)
@@ -75,25 +74,25 @@ async function testWithRealEmails() {
     // Adjust for UTC time (add the offset since we're behind UTC)
     endOfDay.setTime(endOfDay.getTime() + (TIMEZONE_OFFSET * 60 * 60 * 1000));
     
-    console.log(`Searching for emails between: ${startOfDay.toISOString()} and ${endOfDay.toISOString()}`);
+    logger.info(`Searching for emails between: ${startOfDay.toISOString()} and ${endOfDay.toISOString()}`);
     
     // Remove the after/before filters that are causing issues with Gmail API
     // According to Gmail API docs, we need simpler query syntax
     const query = `from:donotreply@directmail.binance.com OR subject:[Binance]`;
-    console.log(`\n🔍 Searching for Binance emails with query: ${query}`);
+    logger.info(`\n🔍 Searching for Binance emails with query: ${query}`);
     
     // Get message list
     const response = await gmail.users.messages.list({
       userId: 'me',
       q: query,
-      maxResults: 20
+      maxResults: 50
     });
     
     const messages = response.data.messages || [];
-    console.log(`\n📬 Found ${messages.length} Binance emails in total`);
+    logger.info(`\n📬 Found ${messages.length} Binance emails in total`);
     
     if (messages.length === 0) {
-      console.log('No emails found. Try adjusting the search query or date range.');
+      logger.warn('No emails found. Try adjusting the search query or date range.');
       return [];
     }
     
@@ -119,11 +118,11 @@ async function testWithRealEmails() {
       }
     }
     
-    console.log(`\n📬 Filtered to ${todayMessages.length} emails from today (Colombia timezone)`);
-    console.log(`🗓️ Skipped ${skippedDueDateCount} emails from other days`);
+    logger.info(`\n📬 Filtered to ${todayMessages.length} emails from today (Colombia timezone)`);
+    logger.info(`🗓️ Skipped ${skippedDueDateCount} emails from other days`);
     
     if (todayMessages.length === 0) {
-      console.log('No emails from today found.');
+      logger.warn('No emails from today found.');
       return [];
     }
     
@@ -135,12 +134,12 @@ async function testWithRealEmails() {
       // Check if this email has already been processed
       const isProcessed = await emailCache.isProcessed(message.id);
       if (isProcessed) {
-        console.log(`\n📨 Skipping already processed email ID: ${message.id}`);
+        logger.info(`\n📨 Skipping already processed email ID: ${message.id}`);
         skippedCount++;
         continue;
       }
       
-      console.log(`\n📨 Fetching email ID: ${message.id}`);
+      logger.info(`\n📨 Fetching email ID: ${message.id}`);
       
       // Get full message content
       const messageData = await gmail.users.messages.get({
@@ -154,15 +153,15 @@ async function testWithRealEmails() {
         header => header.name.toLowerCase() === 'subject'
       );
       const subject = subjectHeader ? subjectHeader.value : 'No Subject';
-      console.log(`📑 Subject: ${subject}`);
+      logger.info(`📑 Subject: ${subject}`);
       
       fullMessages.push(messageData.data);
     }
     
-    console.log(`\n📊 Skipped ${skippedCount} already processed emails`);
+    logger.info(`\n📊 Skipped ${skippedCount} already processed emails`);
     
     if (fullMessages.length === 0) {
-      console.log('All emails have already been processed.');
+      logger.info('All emails have already been processed.');
       return [];
     }
     
@@ -171,7 +170,7 @@ async function testWithRealEmails() {
     // Setting syncToSheets=false because we'll handle it manually for better error handling
     const allTransactions = await transactionService.processBinanceEmails(fullMessages, false, false);
     
-    console.log(`\n📊 Total transactions parsed: ${allTransactions.length}`);
+    logger.info(`\n📊 Total transactions parsed: ${allTransactions.length}`);
     
     // Mark all processed emails as processed in cache
     for (const message of fullMessages) {
@@ -199,15 +198,15 @@ async function testWithRealEmails() {
     if (allTransactions.length > 0) {
       const resultsFile = path.join(process.cwd(), 'email-parsing-results.json');
       fs.writeFileSync(resultsFile, JSON.stringify(allTransactions, null, 2));
-      console.log(`\n💾 Saved ${allTransactions.length} transactions to ${resultsFile}`);
+      logger.info(`\n💾 Saved ${allTransactions.length} transactions to ${resultsFile}`);
       
       // Try to write to Google Sheets
       try {
-        console.log('\n📝 Writing transaction data to Google Sheets...');
+        logger.info('\n📝 Writing transaction data to Google Sheets...');
         
         // Get Sheets ID from environment
         const sheetId = process.env.GOOGLE_SHEETS_ID;
-        console.log(`Using Google Sheet ID: ${sheetId}`);
+        logger.info(`Using Google Sheet ID: ${sheetId}`);
         
         // Define headers - removed Customer, Title, Wallet Address, Payment Info, Price, Quote Quantity
         const headers = [
@@ -223,7 +222,7 @@ async function testWithRealEmails() {
         });
         
         const existingRows = currentContent.data.values || [];
-        console.log(`Found ${existingRows.length > 0 ? existingRows.length - 1 : 0} existing rows of data in sheet`);
+        logger.info(`Found ${existingRows.length > 0 ? existingRows.length - 1 : 0} existing rows of data in sheet`);
         
         // Find the next available row (rows.length is 0-indexed, but sheet is 1-indexed)
         const nextRow = Math.max(existingRows.length + 1, 2); // Start at row 2 at minimum (after headers)
@@ -238,7 +237,7 @@ async function testWithRealEmails() {
               values: [headers] 
             },
           });
-          console.log('Added headers to empty sheet');
+          logger.info('Added headers to empty sheet');
         }
         
         // Transform transactions to sheet rows format - removed Customer, Title, Wallet Address, Payment Info, Price, Quote Quantity
@@ -268,7 +267,7 @@ async function testWithRealEmails() {
         });
         
         // Append to the sheet at the next available row
-        console.log(`Appending ${rows.length} transactions at row ${nextRow}`);
+        logger.info(`Appending ${rows.length} transactions at row ${nextRow}`);
         const response = await sheets.spreadsheets.values.update({
           spreadsheetId: sheetId,
           range: `Transactions!A${nextRow}:L${nextRow + rows.length - 1}`,
@@ -276,17 +275,17 @@ async function testWithRealEmails() {
           resource: { values: rows },
         });
         
-        console.log('✅ Successfully wrote transaction data to Google Sheets');
+        logger.info('✅ Successfully wrote transaction data to Google Sheets');
       } catch (error) {
-        console.error('❌ Error writing to Google Sheets:', error.message);
-        console.log('📋 Continuing with local file only');
+        logger.error('❌ Error writing to Google Sheets:', error.message);
+        logger.info('📋 Continuing with local file only');
       }
     }
     
-    console.log('\n✅ Email testing completed');
+    logger.info('\n✅ Email testing completed');
     return allTransactions;
   } catch (error) {
-    console.error('❌ Error during email testing:', error);
+    logger.error('❌ Error during email testing:', error);
     throw error;
   }
 }
@@ -297,7 +296,7 @@ async function testWithRealEmails() {
  */
 async function testWithSampleEmail() {
   try {
-    console.log('\n📧 Running offline test with sample emails...');
+    logger.info('\n📧 Running offline test with sample emails...');
 
     // Array to collect all transaction results
     const allTransactions = [];
@@ -306,24 +305,25 @@ async function testWithSampleEmail() {
     const paymentResults = await testSampleEmail('payment', '[Binance]Payment Transaction Detail - 2025-04-11 14:25:02 (UTC)');
     const withdrawalResults = await testSampleEmail('withdrawal', '[Binance] USDT Withdrawal Successful - 2025-04-11 23:33:07 (UTC)');
     const depositResults = await testSampleEmail('deposit', '[Binance] USDT Deposit Confirmed - 2025-04-11 21:18:16(UTC)');
+    const paymentReceiveResults = await testSampleEmail('payment_receive', '[Binance] You received an incoming transfer - 2025-04-17 14:14:07(UTC)');
 
     // Collect all successful results
     if (paymentResults) allTransactions.push(...paymentResults);
     if (withdrawalResults) allTransactions.push(...withdrawalResults);
     if (depositResults) allTransactions.push(...depositResults);
-
+    if (paymentReceiveResults) allTransactions.push(...paymentReceiveResults);
     // Save results to a JSON file
     if (allTransactions.length > 0) {
       const resultsFile = path.join(process.cwd(), 'email-parsing-results.json');
       fs.writeFileSync(resultsFile, JSON.stringify(allTransactions, null, 2));
-      console.log(`\n💾 Saved ${allTransactions.length} transactions to ${resultsFile}`);
+      logger.info(`\n💾 Saved ${allTransactions.length} transactions to ${resultsFile}`);
     }
 
-    console.log('\n✅ Sample email testing completed');
+    logger.info('\n✅ Sample email testing completed');
 
     return allTransactions;
   } catch (error) {
-    console.error('❌ Error during sample email testing:', error);
+    logger.error('❌ Error during sample email testing:', error);
     throw error;
   }
 }
@@ -335,7 +335,7 @@ async function testWithSampleEmail() {
  * @returns {Array|null} - Array of parsed transactions or null if parsing failed
  */
 async function testSampleEmail(type, subject) {
-  console.log(`\n📧 Testing ${type} email parsing...`);
+  logger.info(`\n📧 Testing ${type} email parsing...`);
 
   // Create sample email content
   let emailContent = '';
@@ -368,6 +368,21 @@ Your deposit of 10000 USDT is now available in your Binance account. Log in to c
       `;
       expectedAmount = 10000.00;
       break;
+    case 'payment_receive':
+      emailContent = `
+You received an incoming transfer
+
+Time: 2025-04-17 14:14:07(UTC)
+From: User-65e08
+Amount: 1000 USDT
+
+View Transaction History
+
+This is an automated message, please do not reply.
+      `;
+      expectedAmount = 1000.00;
+      expectedSymbol = 'USDT';
+      break;
   }
 
   // Extract transaction details directly
@@ -375,11 +390,11 @@ Your deposit of 10000 USDT is now available in your Binance account. Log in to c
   const transactions = gmailService.extractTransactionDetails(emailContent, subject, emailDate);
 
   if (transactions && transactions.length > 0) {
-    console.log('✅ Successfully extracted transaction details:');
+    logger.info('✅ Successfully extracted transaction details:');
 
     // Simplified output
     const tx = transactions[0];
-    console.log({
+    logger.info({
       transactionType: tx.transactionType,
       symbol: tx.symbol,
       amount: tx.quantity,
@@ -388,19 +403,19 @@ Your deposit of 10000 USDT is now available in your Binance account. Log in to c
 
     // Verify the results
     if (tx.symbol === expectedSymbol && Math.abs(tx.quantity - expectedAmount) < 0.01) {
-      console.log('✅ Transaction data matches expected values');
+      logger.info('✅ Transaction data matches expected values');
       return transactions;
     } else {
-      console.error('❌ Transaction data does not match expected values:');
-      console.error(`  Expected: ${expectedSymbol}, ${expectedAmount}`);
-      console.error(`  Got: ${tx.symbol}, ${tx.quantity}`);
+      logger.error('❌ Transaction data does not match expected values:');
+      logger.error(`  Expected: ${expectedSymbol}, ${expectedAmount}`);
+      logger.error(`  Got: ${tx.symbol}, ${tx.quantity}`);
       return null;
     }
   } else {
-    console.error('❌ Failed to extract transaction details');
+    logger.error('❌ Failed to extract transaction details');
 
     // Try direct parsing for debugging
-    console.log('Attempting direct parsing...');
+    logger.info('Attempting direct parsing...');
     let directResults = null;
 
     switch (type) {
@@ -413,13 +428,16 @@ Your deposit of 10000 USDT is now available in your Binance account. Log in to c
       case 'deposit':
         directResults = gmailService.parseDepositEmail(emailContent, emailDate);
         break;
+      case 'payment_receive':
+        directResults = gmailService.parsePaymentReceiveEmail(emailContent, subject, emailDate);
+        break;
     }
 
     if (directResults && directResults.length > 0) {
-      console.log('✅ Direct parsing succeeded:', directResults[0].transactionType);
+      logger.info('✅ Direct parsing succeeded:', directResults[0].transactionType);
       return directResults;
     } else {
-      console.error('❌ Direct parsing also failed');
+      logger.error('❌ Direct parsing also failed');
       return null;
     }
   }
