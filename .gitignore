@@ -42,8 +42,3 @@ Thumbs.db
 # Cache files
 .cache/
 email-cache.json
-email-parsing-results.json
-
-
-
-
