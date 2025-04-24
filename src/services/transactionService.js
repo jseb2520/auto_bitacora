@@ -11,6 +11,7 @@ const gmailService = require('./gmailService');
 const googleSheetsService = require('./googleSheetsService');
 const { logger, createModuleLogger } = require('../utils/logger');
 const authClient = require('../utils/authClient');
+const { google } = require('googleapis');
 
 // Create a module-specific logger
 const moduleLogger = createModuleLogger('transactionService');
@@ -67,8 +68,18 @@ class TransactionService {
     try {
       moduleLogger.info('Starting Gmail Binance transaction fetch process');
       
-      // Initialize Gmail service
+      // First initialize auth client
+      await authClient.initialize();
+      const auth = await authClient.getAuthClient();
+      
+      // Initialize Gmail service with explicit auth
       await gmailService.initialize();
+      
+      // Make sure gmail is initialized correctly
+      if (!gmailService.gmail) {
+        moduleLogger.info('Gmail service not initialized, creating it directly');
+        gmailService.gmail = google.gmail({ version: 'v1', auth });
+      }
       
       // Get today's date range in Colombia timezone (UTC-5)
       const now = new Date();
@@ -417,6 +428,17 @@ class TransactionService {
    */
   async syncTransactionsToGoogleSheets() {
     try {
+      // Initialize auth client first
+      await authClient.initialize();
+      const auth = await authClient.getAuthClient();
+      
+      // Make sure Google Sheets service is initialized
+      if (!googleSheetsService.sheets) {
+        moduleLogger.info('Initializing Google Sheets service directly');
+        googleSheetsService.sheets = google.sheets({ version: 'v4', auth });
+        googleSheetsService.auth = auth;
+      }
+      
       // Find unsynced transactions
       const unsyncedTransactions = await Transaction.find({ isSynced: false });
       
