@@ -68,13 +68,4 @@ const config = {
   },
 };
 
-// Debug logs for configuration loading
-console.log('Environment:', process.env.NODE_ENV || 'development');
-console.log('API Key loaded from environment:', process.env.API_KEY ? '[PRESENT]' : '[MISSING]');
-console.log('API Key in config:', config.server.apiKey ? '[CONFIGURED]' : '[MISSING]');
-console.log('Port:', config.server.port);
-console.log('MongoDB URI configured:', config.mongodb.uri ? '[PRESENT]' : '[MISSING]');
-console.log('Binance API Key configured:', config.binance.apiKey ? '[PRESENT]' : '[MISSING]');
-console.log('Google Sheet ID:', config.googleSheets.sheetId || '[MISSING]');
-
 module.exports = config; 

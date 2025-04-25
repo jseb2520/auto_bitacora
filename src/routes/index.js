@@ -9,6 +9,7 @@ const revolutWebhookController = require('../controllers/revolutWebhookControlle
 const krakenWebhookController = require('../controllers/krakenWebhookController');
 const summaryController = require('../controllers/summaryController');
 const healthController = require('../controllers/healthController');
+const schedulerController = require('../controllers/schedulerController');
 const middleware = require('../middleware');
 
 const router = express.Router();
@@ -101,6 +102,34 @@ router.post('/summaries/send/:customerId', summaryController.sendCustomerSummary
  * @access Private (protected by API key)
  */
 router.post('/summaries/generate-test', summaryController.generateTestSummaries);
+
+/**
+ * @route GET /api/scheduler/status
+ * @description Get the status of the email processing scheduler
+ * @access Private (protected by API key)
+ */
+router.get('/scheduler/status', middleware.apiKeyAuth, schedulerController.getStatus);
+
+/**
+ * @route GET /api/scheduler/diagnostics
+ * @description Get detailed diagnostics for the scheduler
+ * @access Private (protected by API key)
+ */
+router.get('/scheduler/diagnostics', middleware.apiKeyAuth, schedulerController.getDiagnostics);
+
+/**
+ * @route POST /api/scheduler/run
+ * @description Manually run the scheduled email processing task
+ * @access Private (protected by API key)
+ */
+router.post('/scheduler/run', middleware.apiKeyAuth, schedulerController.runManually);
+
+/**
+ * @route POST /api/scheduler/reschedule
+ * @description Force reschedule the email processing task
+ * @access Private (protected by API key)
+ */
+router.post('/scheduler/reschedule', middleware.apiKeyAuth, schedulerController.forceReschedule);
 
 // Error logging for all routes
 router.use(middleware.errorLogger);

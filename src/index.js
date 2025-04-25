@@ -76,7 +76,7 @@ app.get('/', (req, res) => {
         </tr>
         <tr>
           <td>Scheduler (Email Processing)</td>
-          <td class="${schedulerStatus === 'Running' ? 'status-ok' : 'status-warn'}">${schedulerStatus}</td>
+          <td class="${schedulerStatus === 'Running' ? 'status-ok' : schedulerStatus === 'Partially Running' ? 'status-warn' : 'status-error'}">${schedulerStatus}</td>
         </tr>
       </table>
 
@@ -90,6 +90,7 @@ app.get('/', (req, res) => {
         <tr><td>Memory Usage (Heap Used)</td><td>${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB</td></tr>
         <tr><td>Node Version</td><td>${process.version}</td></tr>
         <tr><td>Platform</td><td>${process.platform}</td></tr>
+        <tr><td>Email Processing Schedule</td><td>3:30 PM and 7:00 PM Colombia time (UTC-5)<br>8:30 PM and 12:00 AM UTC</td></tr>
       </table>
     </body>
     </html>

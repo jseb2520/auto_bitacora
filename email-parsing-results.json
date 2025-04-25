@@ -1,70 +1,20 @@
 [
   {
-    "transactionType": "WITHDRAWAL",
-    "orderId": "WD1745506852950",
+    "transactionType": "DEPOSIT",
+    "orderId": "DEP1745544951807",
     "platform": "BINANCE",
     "status": "COMPLETED",
     "symbol": "USDT",
-    "quantity": 1484.48,
+    "quantity": 15959.773097,
     "price": 1,
-    "side": "SELL",
-    "time": 1745506748000,
-    "updateTime": 1745506748000,
-    "walletAddress": "",
-    "sourceType": "EMAIL",
-    "metadata": {
-      "messageId": "196684f524f9691f",
-      "subject": "[Binance] USDT Withdrawal Successful - 2025-04-24 14:59:07 (UTC)",
-      "processedAt": "2025-04-24T15:00:52.951Z"
-    }
-  },
-  {
-    "orderId": "0",
-    "platform": "BINANCE",
-    "transactionType": "PAYMENT",
-    "symbol": "USDT",
-    "quantity": 3261.5,
-    "side": "SELL",
-    "type": "PAYMENT",
-    "status": "COMPLETED",
-    "time": "2025-04-24T14:32:40.000Z",
-    "updateTime": "2025-04-24T14:32:40.000Z",
-    "price": null,
-    "quoteQuantity": 3261.5,
-    "sourceType": "EMAIL",
-    "paymentDetails": {
-      "currency": "USDT",
-      "method": "BINANCE_PAY"
-    },
-    "metadata": {
-      "messageId": "196683719c59d410",
-      "subject": "[Binance]Payment Transaction Detail - 2025-04-24 14:32:40 (UTC)",
-      "processedAt": "2025-04-24T15:00:52.955Z"
-    }
-  },
-  {
-    "orderId": "0",
-    "platform": "BINANCE",
-    "transactionType": "PAYMENT_RECEIVE",
-    "symbol": "USDT",
-    "quantity": 5000,
     "side": "BUY",
-    "type": "PAYMENT_RECEIVE",
-    "status": "COMPLETED",
-    "time": "2025-04-24T13:17:48.000Z",
-    "updateTime": "2025-04-24T13:17:48.000Z",
-    "price": null,
-    "quoteQuantity": 5000,
+    "time": 1745517026000,
+    "updateTime": 1745517026000,
     "sourceType": "EMAIL",
-    "paymentDetails": {
-      "currency": "USDT",
-      "method": "BINANCE_PAY",
-      "sender": "Amount:"
-    },
     "metadata": {
-      "messageId": "19667f290cb44277",
-      "subject": "[Binance] Payment Receive Successful - 2025-04-24 13:17:48 (UTC)",
-      "processedAt": "2025-04-24T15:00:52.961Z"
+      "messageId": "19668ec21892e05b",
+      "subject": "[Binance] USDT Deposit Confirmed - 2025-04-24 17:50:25(UTC)",
+      "processedAt": "2025-04-25T01:35:51.807Z"
     }
   }
 ]

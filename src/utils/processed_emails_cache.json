@@ -442,5 +442,14 @@
     "transactionIds": [
       "0"
     ]
+  },
+  "19668ec21892e05b": {
+    "processedAt": "2025-04-25T01:35:51.808Z",
+    "subject": "[Binance] USDT Deposit Confirmed - 2025-04-24 17:50:25(UTC)",
+    "date": "2025-04-24T17:50:26.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "DEP1745544951807"
+    ]
   }
 }
