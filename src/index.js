@@ -169,8 +169,15 @@ const startServer = async () => {
     });
     
     // Initialize our scheduler for email processing
-    initializeScheduler();
-    logger.info('Scheduler initialized for email processing at 7PM Colombia time');
+    try {
+      initializeScheduler();
+      logger.info('Scheduler initialized for email processing at 3:30 PM and 7:00 PM Colombia time');
+    } catch (error) {
+      logger.error('Failed to initialize scheduler, but will continue server startup', {
+        error: error.message,
+        stack: error.stack
+      });
+    }
     
     // Keep-alive mechanism to prevent Railway from shutting down the app
     setInterval(() => {

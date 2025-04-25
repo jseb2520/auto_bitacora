@@ -131,6 +131,13 @@ router.post('/scheduler/run', middleware.apiKeyAuth, schedulerController.runManu
  */
 router.post('/scheduler/reschedule', middleware.apiKeyAuth, schedulerController.forceReschedule);
 
+/**
+ * @route POST /api/scheduler/check-missed
+ * @description Manually check for missed scheduled jobs
+ * @access Private (protected by API key)
+ */
+router.post('/scheduler/check-missed', middleware.apiKeyAuth, schedulerController.checkMissedJobs);
+
 // Error logging for all routes
 router.use(middleware.errorLogger);
 

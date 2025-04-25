@@ -451,5 +451,32 @@
     "transactionIds": [
       "DEP1745544951807"
     ]
+  },
+  "1966e0ca7e83e08d": {
+    "processedAt": "2025-04-25T17:48:56.853Z",
+    "subject": "[Binance]Payment Transaction Detail - 2025-04-25 17:44:02 (UTC)",
+    "date": "2025-04-25T17:44:03.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "0"
+    ]
+  },
+  "1966b7e290b9d982": {
+    "processedAt": "2025-04-25T17:48:56.855Z",
+    "subject": "[Binance] USDT Withdrawal Successful - 2025-04-25 05:49:09 (UTC)",
+    "date": "2025-04-25T05:49:10.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "WD1745603336851"
+    ]
+  },
+  "1966b7b5ac423195": {
+    "processedAt": "2025-04-25T17:48:56.855Z",
+    "subject": "[Binance]Payment Transaction Detail - 2025-04-25 05:46:05 (UTC)",
+    "date": "2025-04-25T05:46:06.000Z",
+    "transactionCount": 1,
+    "transactionIds": [
+      "0"
+    ]
   }
 }

@@ -7,7 +7,8 @@ const {
   getSchedulerStatus, 
   runJobManually, 
   rescheduleJob,
-  getSchedulerDiagnostics
+  getSchedulerDiagnostics,
+  checkForMissedJobs
 } = require('../scheduler');
 const { logger } = require('../utils/logger');
 
@@ -74,9 +75,27 @@ const forceReschedule = (req, res) => {
   }
 };
 
+/**
+ * Manually trigger a check for missed jobs
+ */
+const checkMissedJobs = async (req, res) => {
+  try {
+    logger.info('Manual check for missed jobs requested via API');
+    await checkForMissedJobs();
+    res.json({ 
+      success: true, 
+      message: 'Completed check for missed jobs'
+    });
+  } catch (error) {
+    logger.error('Error checking for missed jobs', { error: error.message });
+    res.status(500).json({ error: 'Failed to check for missed jobs' });
+  }
+};
+
 module.exports = {
   getStatus,
   getDiagnostics,
   runManually,
-  forceReschedule
+  forceReschedule,
+  checkMissedJobs
 }; 

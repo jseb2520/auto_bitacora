@@ -155,21 +155,68 @@ const handleWebhook = async (req, res) => {
 
 ### Scheduler (`src/scheduler.js`)
 
-Manages scheduled tasks using node-cron.
+Manages scheduled tasks using cron jobs.
 
 ```javascript
 // Initialize scheduled tasks
 function initializeScheduler() {
-  // Schedule email processing at 7:00 PM Colombia time (UTC-5)
-  cron.schedule('0 0 * * *', async () => {
-    // Process today's Binance emails
-    // Sync unsynced transactions to Google Sheets
-  }, {
-    scheduled: true,
-    timezone: "America/Bogota" // Colombia timezone
-  });
+  // Two scheduled jobs:
+  
+  // 1. Schedule email processing at 3:30 PM Colombia time (8:30 PM UTC)
+  const afternoonJob = new CronJob(
+    '30 20 * * *',  // 8:30 PM UTC
+    () => jobFunction('afternoon'),
+    null,
+    false,
+    'UTC'
+  );
+  
+  // 2. Schedule email processing at 7:00 PM Colombia time (12:00 AM UTC)
+  const eveningJob = new CronJob(
+    '0 0 * * *',  // 12:00 AM UTC
+    () => jobFunction('evening'),
+    null,
+    false,
+    'UTC'
+  );
+  
+  // 3. Monitoring job to check for missed scheduled runs
+  const monitoringJob = new CronJob(
+    '0 * * * *',  // Every hour
+    checkForMissedJobs,
+    null,
+    false,
+    'UTC'
+  );
+  
+  // Start all jobs with robust error handling
+}
+
+// Job function that runs at scheduled times
+async function jobFunction(jobType) {
+  // Process today's Binance emails
+  // Sync unsynced transactions to Google Sheets
+  // Track job execution history
+  // Send alerts on failures
+}
+
+// Monitoring function that checks for missed jobs
+async function checkForMissedJobs() {
+  // Check if scheduled jobs were missed
+  // Send alert emails for missed jobs
+  // Update job statistics
 }
 ```
+
+#### New Features
+
+1. **Multiple daily processing times**: Runs at both 3:30 PM and 7:00 PM Colombia time
+2. **Job monitoring**: Detects missed jobs and sends email alerts
+3. **API endpoints**: Control and diagnostic endpoints to manage scheduler
+4. **Error resilience**: Multiple layers of error handling to prevent crashes
+5. **Email alerts**: Automatic notifications for errors and missed jobs
+
+See [SCHEDULER_UPDATE.md](./SCHEDULER_UPDATE.md) for detailed documentation on recent scheduler enhancements.
 
 ### Main Application (`src/index.js`)
 
